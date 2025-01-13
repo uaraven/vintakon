@@ -1,0 +1,26 @@
+
+
+final supportedFormats = {
+  "jpg",
+  "jpeg",
+  "raf",
+  "crw",
+  "cr2",
+  "cr3",
+  "nef",
+  "nrw",
+  "arw",
+  "srf",
+  "sr2",
+  "orf",
+  "tiff",
+  "dng",
+  "3fr",
+  "gpr",
+  "mef",
+  "raw",
+  "rw2",
+  "rwl",
+  "x3f",
+  "srw",
+};
