@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:lens_attr/model/config.dart';
@@ -57,7 +58,9 @@ class ApplyProfile extends HookConsumerWidget {
                 Expanded(
                     child: TextField(
                   controller: apertureEditController,
-                  enabled: checkedImagesExist,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: false),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]*'))],
+                  enabled: checkedImagesExist && apertureChecked.value,
                 )),
               ],
             ),
@@ -68,10 +71,13 @@ class ApplyProfile extends HookConsumerWidget {
         ),
         SizedBox(
           width: 200,
-          child: Column(
-              children: [ElevatedButton(onPressed: checkedImagesExist ? () {} : null, child: const Text("Apply"))]),
+          child: Column(children: [
+            ElevatedButton(onPressed: checkedImagesExist ? applyChanges : null, child: const Text("Apply"))
+          ]),
         ),
       ]),
     );
   }
+
+  applyChanges() {}
 }

@@ -23,7 +23,7 @@ class FolderSelector extends HookConsumerWidget {
               : const TextStyle(fontSize: 16),
               textAlign: filePath == null || filePath == "" ? TextAlign.end : TextAlign.start,
         )),
-        IconButton(
+        ElevatedButton(
             onPressed: () {
               FilesystemPicker.open(
                       context: context,
@@ -41,7 +41,7 @@ class FolderSelector extends HookConsumerWidget {
                 }
               });
             },
-            icon: const Icon(Icons.folder_open))
+            child: const Icon(Icons.folder_open))
       ],
     );
   }
