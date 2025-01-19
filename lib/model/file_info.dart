@@ -65,6 +65,10 @@ class LensInfo {
         "${minF.toStringAsFixed(1)} ${maxF.toStringAsFixed(1)}";
   }
 
+  bool isEmpty() {
+    return minF == 0 && maxF == 0;
+  }
+
   @override
   String toString() {
     final focal = minFocalLength == maxFocalLength

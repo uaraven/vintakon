@@ -9,7 +9,7 @@
    id="svg1"
    inkscape:version="1.4 (e7c3feb1, 2024-10-09)"
    sodipodi:docname="icon.svg"
-   inkscape:export-filename="icon.png"
+   inkscape:export-filename="../images/app_icon.png"
    inkscape:export-xdpi="9"
    inkscape:export-ydpi="9"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
@@ -27,14 +27,15 @@
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="px"
      inkscape:zoom="1.1061536"
-     inkscape:cx="136.96109"
-     inkscape:cy="370.65378"
+     inkscape:cx="137.4131"
+     inkscape:cy="370.65377"
      inkscape:window-width="1800"
      inkscape:window-height="1097"
      inkscape:window-x="0"
      inkscape:window-y="44"
      inkscape:window-maximized="1"
-     inkscape:current-layer="layer1" />
+     inkscape:current-layer="layer1"
+     showgrid="false" />
   <defs
      id="defs1" />
   <path

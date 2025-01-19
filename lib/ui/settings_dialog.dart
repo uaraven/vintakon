@@ -35,9 +35,13 @@ class SettingsDialog extends HookConsumerWidget {
         children: [
           Row(
             children: [
-              const Text("exiftool path"),
+              const Text("Exiftool path"),
               const SizedBox(width: 8),
-              Expanded(child: TextField(controller: controller, enabled: false,)),
+              Expanded(
+                  child: TextField(
+                controller: controller,
+                enabled: false,
+              )),
               ElevatedButton(
                   onPressed: () {
                     FilesystemPicker.open(
@@ -58,7 +62,12 @@ class SettingsDialog extends HookConsumerWidget {
                   child: const Icon(Icons.folder_open)),
             ],
           ),
-          LensProfileEditor(),
+          const SizedBox(height: 8),
+          const Text("Lens profiles"),
+          const SizedBox(height: 4),
+          const Expanded(
+            child: LensProfileListEditor(),
+          ),
         ],
       ),
     );

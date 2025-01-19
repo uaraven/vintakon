@@ -32,6 +32,12 @@ class LensProfile {
   const LensProfile(this.name, this.make, this.model, this.lensInfo, this.focalLength, this.focalLength35mm,
       {this.isEmpty = true});
 
+  LensProfile copyWith(
+      {String? name, String? make, String? model, LensInfo? lensInfo, String? focalLength, String? focalLength35mm}) {
+    return LensProfile(name ?? this.name, make ?? this.make, model ?? this.model, lensInfo ?? this.lensInfo,
+        focalLength ?? this.focalLength, focalLength35mm ?? this.focalLength35mm);
+  }
+
   factory LensProfile.fromJson(Map<String, dynamic> json) {
     final Map<String, dynamic> lensInfo = json["lensInfo"];
     return LensProfile(json["name"], json["make"], json["model"], LensInfo.fromJson(lensInfo), json["focalLength"],
@@ -56,6 +62,34 @@ class LensProfile {
   factory LensProfile.empty() {
     return LensProfile("", "", "", LensInfo.empty(), "", "", isEmpty: true);
   }
+
+  String asString() {
+    final repr = "${make ?? ''} ${model ?? ''} ${(lensInfo?.isEmpty() ?? true) ? 'No data' : lensInfo.toString()}";
+    return repr.isEmpty ? "No data" : repr;
+  }
+}
+
+class LensProfileEditable {
+  String name;
+  String make;
+  String model;
+  LensInfo lensInfo;
+  String focalLength;
+  String focalLength35mm;
+
+  LensProfileEditable(this.name, this.make, this.model, this.lensInfo, this.focalLength, this.focalLength35mm);
+
+  factory LensProfileEditable.fromImmutable(LensProfile profile) {
+    return LensProfileEditable(profile.name, profile.make ?? "",
+        profile.model ?? "",
+        profile.lensInfo ?? LensInfo.empty(),
+        profile.focalLength ?? "",
+        profile.focalLength35mm ?? "");
+  }
+
+  LensProfile toImmutable() {
+    return LensProfile(name, make, model, lensInfo, focalLength, focalLength35mm);
+  }
 }
 
 class Config {
@@ -70,7 +104,8 @@ class Config {
   }
 
   Map<String, dynamic> toJson() {
-    return {"exifToolPath": exifToolPath, "lensProfiles": lensProfiles.map((elem) => elem.toJson())};
+    var map = lensProfiles.map((elem) => elem.toJson()).toList();
+    return {"exifToolPath": exifToolPath, "lensProfiles": map};
   }
 
   static String _configDir() {
@@ -135,7 +170,9 @@ class Config {
 
   Config addProfile(LensProfile profile) {
     final profiles = [...lensProfiles, profile];
-    return Config(exifToolPath, profiles);
+    final newConfig = Config(exifToolPath, profiles);
+    newConfig.save();
+    return newConfig;
   }
 
   Config deleteProfile(int index) {
@@ -158,5 +195,22 @@ class Config {
     final newConfig = Config(path, lensProfiles);
     newConfig.save();
     return newConfig;
+  }
+
+  Config addEmptyProfile() {
+    var profileIndex = lensProfiles.length + 1;
+    while (!isValidName("Lens Profile #$profileIndex")) {
+      profileIndex++;
+    }
+    final newProfile = LensProfile("Lens Profile #$profileIndex", "", "", LensInfo.empty(), "", "", isEmpty: false);
+    return addProfile(newProfile);
+  }
+
+  bool isValidName(String profileName, {int ignoreIndex = -1}) {
+    if (profileName.isEmpty) {
+      return false;
+    }
+    var ignoredProfile = ignoreIndex == -1 ? null : lensProfiles[ignoreIndex];
+    return !lensProfiles.any((profile) => profile != ignoredProfile && profile.name == profileName);
   }
 }
