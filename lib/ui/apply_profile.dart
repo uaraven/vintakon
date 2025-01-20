@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:lens_attr/model/config.dart';
+import 'package:lens_attr/model/file_info.dart';
 import 'package:lens_attr/model/state.dart';
 
 const headerSize = 200.0;
@@ -15,7 +16,10 @@ class ApplyProfile extends HookConsumerWidget {
     final config = ref.watch(configProvider);
     final checkedImagesExist = ref.watch(checkedImagesProvider).isNotEmpty;
 
-    final selectedLensProfile = useState(LensProfile.empty());
+    final selectedLensProfile = useState("");
+    if (!config.lensProfiles.any((p) => p.name == selectedLensProfile.value)) {
+        selectedLensProfile.value = "";
+    }
     final apertureEditController = useTextEditingController();
     final lensProfileChecked = useState(false);
     final apertureChecked = useState(false);
@@ -34,16 +38,15 @@ class ApplyProfile extends HookConsumerWidget {
                         }),
               const SizedBox(width: headerSize, child: Text("Lens profile")),
               Expanded(
-                  child: DropdownButtonHideUnderline(
-                      child: DropdownButton(
-                          value: selectedLensProfile.value.name,
-                          onChanged: (value) {},
-                          items: config.lensProfiles.map((elem) {
-                            return DropdownMenuItem(
-                              value: elem.name,
-                              child: Padding(padding: const EdgeInsets.all(8), child: Text(elem.name)),
-                            );
-                          }).toList()))),
+                  child:
+                  DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                          value: selectedLensProfile.value,
+                          onChanged: lensProfileChecked.value ? (value) {
+                            selectedLensProfile.value = value.toString();
+                            }
+                            : null,
+                          items: listProfiles(config))),),
             ]),
             Row(
               children: [
@@ -77,6 +80,16 @@ class ApplyProfile extends HookConsumerWidget {
         ),
       ]),
     );
+  }
+
+  List<DropdownMenuItem<String>> listProfiles(Config config) {
+    final elems = config.lensProfiles.map((elem) {
+      return DropdownMenuItem(
+        value: elem.name,
+        child: Padding(padding: const EdgeInsets.all(8), child: Text(elem.name)),
+      );
+    }).toList();
+    return [const DropdownMenuItem(value: "", child: Padding(padding: EdgeInsets.all(8), child: Text(""))), ...elems];
   }
 
   applyChanges() {}

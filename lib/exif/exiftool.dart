@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lens_attr/exif/common.dart';
 import 'package:lens_attr/exif/tags.dart';
+import 'package:lens_attr/model/file_info.dart';
 
 final exifToolDateFormat = DateFormat('yyyy:MM:dd HH:mm:ssZ');
 
@@ -40,23 +42,23 @@ class ExifToolFileInfo {
       this.previewBase64);
 
   factory ExifToolFileInfo.fromJson(Map<String, dynamic> json) {
-    var modTime = json[tagFileModifyDate];
+    var modTime = json[tagFileModifyDate] ?? "";
     var preview = json[tagPreviewImage]?.toString() ?? json[tagJpgFromRaw]?.toString() ?? json[tagThumbnailImage] ?? "";
     preview = preview.startsWith("base64:") ? preview.substring(7) : preview;
     return ExifToolFileInfo(
         json[tagSourceFile],
         exifToolDateFormat.parse(modTime),
-        json[tagMake],
-        json[tagModel],
-        json[tagLensMake],
-        json[tagLensModel],
-        json[tagLensInfo],
-        json[tagExposureCompensation],
-        json[tagIso],
-        json[tagAperture],
-        json[tagShutterSpeed],
-        json[tagFocalLength],
-        json[tagFocalLengthIn35mmFormat],
+        json[tagMake] ?? "",
+        json[tagModel] ?? "",
+        json[tagLensMake] ?? "",
+        json[tagLensModel] ?? "",
+        json[tagLensInfo] ?? "",
+        json[tagExposureCompensation] ?? "",
+        json[tagIso] ?? "",
+        json[tagAperture] ?? "",
+        json[tagShutterSpeed] ?? "",
+        json[tagFocalLength] ?? "",
+        json[tagFocalLengthIn35mmFormat] ?? "",
         preview);
   }
 
@@ -125,6 +127,7 @@ class ExifTool {
       final fileList = jsonDecode(execResult.stdout);
       return ExifToolFileInfo.fromJsonList(fileList);
     } catch (e) {
+      debugPrint(e.toString());
       return [];
     }
   }

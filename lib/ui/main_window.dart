@@ -34,12 +34,14 @@ class MainWindow extends ConsumerWidget {
             ],
             title: const FolderSelector()),
         body: files.when(
-            data: (data) => Row(
-                  children: [
-                    SizedBox(width: 400, child: Padding(padding: const EdgeInsets.all(8), child: FileList(data.data))),
-                    Expanded(child: ExifTagList(imageInfo: selectedFile?.imageInfo))
-                  ],
-                ),
+            data: (data) {
+              return Row(
+                children: [
+                  SizedBox(width: 400, child: Padding(padding: const EdgeInsets.all(8), child: FileList(data.data))),
+                  Expanded(child: ExifTagList(imageInfo: selectedFile?.imageInfo))
+                ],
+              );
+            },
             error: (err, _) => Text("Error $err"),
             loading: () => const LoadingSpinner()));
   }

@@ -36,6 +36,7 @@ class ExifTagList extends StatelessWidget {
                         ),
                     itemCount: tags.length)),
           ),
+          const Divider(),
           (imageInfo == null || imageInfo?.preview == null) ? Container() : const ApplyProfile(),
         ],
       ),

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:lens_attr/model/config.dart';
+import 'package:lens_attr/model/file_info.dart';
 import 'package:lens_attr/model/state.dart';
 
 class LensProfileEditor extends HookConsumerWidget {
@@ -19,6 +20,13 @@ class LensProfileEditor extends HookConsumerWidget {
     final modelController = useTextEditingController(text: config.lensProfiles[index].model ?? "");
     final focalController = useTextEditingController(text: config.lensProfiles[index].focalLength ?? "");
     final focal35Controller = useTextEditingController(text: config.lensProfiles[index].focalLength35mm ?? "");
+
+    final minFCtrl = useTextEditingController(text: config.lensProfiles[index].lensInfo?.minF.toStringAsFixed(2) ?? "");
+    final maxFCtrl = useTextEditingController(text: config.lensProfiles[index].lensInfo?.maxF.toStringAsFixed(2) ?? "");
+    final minFocalCtrl =
+        useTextEditingController(text: config.lensProfiles[index].lensInfo?.minFocalLength.toStringAsFixed(2) ?? "");
+    final maxFocalCtrl =
+        useTextEditingController(text: config.lensProfiles[index].lensInfo?.maxFocalLength.toStringAsFixed(2) ?? "");
 
     return Padding(
       padding: const EdgeInsets.all(8),
@@ -42,6 +50,25 @@ class LensProfileEditor extends HookConsumerWidget {
         ),
         ListTile(
           contentPadding: const EdgeInsets.all(8),
+          title: const Text("Lens parameters"),
+          subtitle: Column(children: [
+            Row(children: [
+              const SizedBox(width: 140, child: Text("Focal length ", textAlign: TextAlign.end)),
+              SizedBox(width: 70, child: numericTextField(minFocalCtrl, textAlign: TextAlign.end)),
+              const Text(" — "),
+              SizedBox(width: 70, child: numericTextField(maxFocalCtrl)),
+              const Text("mm")
+            ]),
+            Row(children: [
+              const SizedBox(width: 140, child: Text("Aperture f/", textAlign: TextAlign.end)),
+              SizedBox(width: 70, child: numericTextField(minFCtrl, textAlign: TextAlign.end)),
+              const Text(" — "),
+              SizedBox(width: 70, child: numericTextField(maxFCtrl)),
+            ])
+          ]),
+        ),
+        ListTile(
+          contentPadding: const EdgeInsets.all(8),
           title: const Text("Focal length"),
           subtitle: numericTextField(focalController),
         ),
@@ -58,25 +85,37 @@ class LensProfileEditor extends HookConsumerWidget {
                     return cb.updateProfile(
                         index,
                         LensProfile(nameController.text, makeController.text, modelController.text,
-                            config.lensProfiles[index].lensInfo, focalController.text, focal35Controller.text));
+                            createLensInfo(minFocalCtrl.text, maxFocalCtrl.text, minFCtrl.text, minFCtrl.text), focalController.text, focal35Controller.text));
                   });
                   Navigator.pop(context);
                 },
                 child: const Icon(Icons.check_circle_rounded)),
             const SizedBox(width: 8),
-            ElevatedButton(onPressed: () {}, child: const Icon(Icons.cancel_rounded))
+            ElevatedButton(onPressed: () {
+              Navigator.pop(context);
+            }, child: const Icon(Icons.cancel_rounded))
           ],
         )
       ]),
     );
   }
 
-  TextField numericTextField(TextEditingController controller) {
+  TextField numericTextField(TextEditingController controller, {TextAlign? textAlign, TextStyle? style}) {
     return TextField(
       keyboardType: const TextInputType.numberWithOptions(signed: false, decimal: true),
       inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^[\d.]*'))],
       controller: controller,
+      textAlign: textAlign ?? TextAlign.start,
+      style: style,
     );
+  }
+
+  LensInfo? createLensInfo(String minFocal, String maxFocal, String minF, String maxF) {
+    final focalMin = double.tryParse(minFocal) ?? 0;
+    final focalMax = double.tryParse(maxFocal) ?? 0;
+    final fMin = double.tryParse(minF) ?? 0;
+    final fMax = double.tryParse(maxF) ?? 0;
+    return LensInfo(fMin, fMax, focalMin, focalMax);
   }
 }
 
