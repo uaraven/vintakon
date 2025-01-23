@@ -38,7 +38,7 @@ class MainWindow extends ConsumerWidget {
               return Row(
                 children: [
                   SizedBox(width: 400, child: Padding(padding: const EdgeInsets.all(8), child: FileList(data.data))),
-                  Expanded(child: ExifTagList(imageInfo: selectedFile?.imageInfo))
+                  Expanded(child: ExifTagList(imageInfo: selectedFile?.imageInfo, images: data))
                 ],
               );
             },

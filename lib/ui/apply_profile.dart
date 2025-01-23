@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:lens_attr/exif/exiftool.dart';
 import 'package:lens_attr/model/config.dart';
 import 'package:lens_attr/model/file_info.dart';
 import 'package:lens_attr/model/state.dart';
@@ -9,7 +10,9 @@ import 'package:lens_attr/model/state.dart';
 const headerSize = 200.0;
 
 class ApplyProfile extends HookConsumerWidget {
-  const ApplyProfile({super.key});
+  final FolderImages images;
+
+  const ApplyProfile(this.images, {super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -18,7 +21,7 @@ class ApplyProfile extends HookConsumerWidget {
 
     final selectedLensProfile = useState("");
     if (!config.lensProfiles.any((p) => p.name == selectedLensProfile.value)) {
-        selectedLensProfile.value = "";
+      selectedLensProfile.value = "";
     }
     final apertureEditController = useTextEditingController();
     final lensProfileChecked = useState(false);
@@ -38,15 +41,16 @@ class ApplyProfile extends HookConsumerWidget {
                         }),
               const SizedBox(width: headerSize, child: Text("Lens profile")),
               Expanded(
-                  child:
-                  DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                          value: selectedLensProfile.value,
-                          onChanged: lensProfileChecked.value ? (value) {
-                            selectedLensProfile.value = value.toString();
-                            }
+                child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                        value: selectedLensProfile.value,
+                        onChanged: lensProfileChecked.value
+                            ? (value) {
+                                selectedLensProfile.value = value.toString();
+                              }
                             : null,
-                          items: listProfiles(config))),),
+                        items: listProfiles(config))),
+              ),
             ]),
             Row(
               children: [
@@ -75,7 +79,12 @@ class ApplyProfile extends HookConsumerWidget {
         SizedBox(
           width: 200,
           child: Column(children: [
-            ElevatedButton(onPressed: checkedImagesExist ? applyChanges : null, child: const Text("Apply"))
+            ElevatedButton(
+                onPressed: checkedImagesExist
+                    ? () => applyChanges(context, ref, apertureChecked.value ? apertureEditController.text : null,
+                        lensProfileChecked.value ? selectedLensProfile.value : null)
+                    : null,
+                child: const Text("Apply"))
           ]),
         ),
       ]),
@@ -92,5 +101,30 @@ class ApplyProfile extends HookConsumerWidget {
     return [const DropdownMenuItem(value: "", child: Padding(padding: EdgeInsets.all(8), child: Text(""))), ...elems];
   }
 
-  applyChanges() {}
+  applyChanges(BuildContext context, WidgetRef ref, String? aperture, String? profileName) {
+    final config = ref.read(configProvider);
+    final checkedImages = ref.read(checkedImagesProvider);
+
+    final targets = images.data
+        .where((file) => checkedImages.contains(file.filePath))
+        .map((file) => file.filePath)
+        .toList(growable: false);
+
+    final lensProfile = config.lensProfiles.where((profile) => profile.name == profileName).firstOrNull;
+
+    final changes = ExifChanges.of(lensProfile, aperture);
+
+    final exiftool = ExifTool(exifToolPath: config.exifToolPath);
+    // FIXME: Show progress dialog
+    exiftool
+        .applyChanges(images.folder, targets, changes)
+        .onError(
+          //FIXME: Show error
+          (error, stackTrace) {},
+        )
+        .then((value) {
+      ref.read(checkedImagesProvider.notifier).clear();
+      return ref.refresh(imageDataProvider.future);
+    });
+  }
 }

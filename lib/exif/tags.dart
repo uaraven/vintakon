@@ -12,6 +12,7 @@ const tagLensInfo = 'LensInfo';
 const tagExposureCompensation = 'ExposureCompensation';
 const tagIso = 'ISO';
 const tagAperture = 'Aperture';
+const tagFNumber = 'FNumber';
 const tagShutterSpeed = 'ShutterSpeed';
 const tagFocalLength = 'FocalLength';
 const tagFocalLengthIn35mmFormat = 'FocalLengthIn35mmFormat';

@@ -4,8 +4,9 @@ import 'package:lens_attr/ui/apply_profile.dart';
 
 class ExifTagList extends StatelessWidget {
   final ImageFileInfo? imageInfo;
+  final FolderImages images;
 
-  const ExifTagList({super.key, required this.imageInfo});
+  const ExifTagList({super.key, required this.imageInfo, required this.images});
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +38,7 @@ class ExifTagList extends StatelessWidget {
                     itemCount: tags.length)),
           ),
           const Divider(),
-          (imageInfo == null || imageInfo?.preview == null) ? Container() : const ApplyProfile(),
+          (imageInfo == null || imageInfo?.preview == null) ? Container() : ApplyProfile(images),
         ],
       ),
     );

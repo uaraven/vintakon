@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lens_attr/exif/tags.dart';
+import 'package:lens_attr/model/config.dart';
 import 'package:path/path.dart' as p;
 import 'package:lens_attr/exif/exiftool.dart';
 import 'package:flutter/widgets.dart';
@@ -61,7 +62,7 @@ class LensInfo {
   }
 
   String toExif() {
-    return "${minFocalLength.toStringAsFixed(1)} ${maxFocalLength.toStringAsFixed(1)}"
+    return "${minFocalLength.toStringAsFixed(1)} ${maxFocalLength.toStringAsFixed(1)} "
         "${minF.toStringAsFixed(1)} ${maxF.toStringAsFixed(1)}";
   }
 
@@ -156,10 +157,56 @@ class ImageFileInfo {
   }
 }
 
+class ExifChanges {
+  final String? make;
+  final String? model;
+  final String? aperture;
+  final String? focalLength;
+  final String? focalLength35mm;
+  final LensInfo? lensInfo;
+
+  const ExifChanges({this.make, this.model, this.aperture, this.focalLength, this.focalLength35mm, this.lensInfo});
+
+  factory ExifChanges.of(LensProfile? lensProfile, String? aperture) {
+    return ExifChanges(
+        make: lensProfile?.make,
+        model: lensProfile?.model,
+        focalLength: lensProfile?.focalLength,
+        focalLength35mm: lensProfile?.focalLength35mm,
+        lensInfo: lensProfile?.lensInfo,
+        aperture: aperture);
+  }
+
+  List<String> toExifTool() {
+    final sb = <String>[];
+    if (make != null) {
+      sb.add("-$tagLensMake=$make");
+    }
+    if (model != null) {
+      sb.add("-$tagLensModel=$model");
+    }
+    if (focalLength != null) {
+      sb.add("-$tagFocalLength=$focalLength");
+    }
+    if (focalLength35mm != null) {
+      sb.add("-$tagFocalLengthIn35mmFormat=$focalLength35mm");
+    }
+    if (lensInfo != null) {
+      sb.add("-$tagLensInfo=${lensInfo!.toExif()}");
+    }
+    if (aperture != null) {
+      sb.add("-$tagAperture=$aperture");
+      sb.add("-$tagFNumber=$aperture");
+    }
+    return sb;
+  }
+}
+
 class FolderImages {
   final List<ImageFileInfo> data;
+  final String folder;
 
-  FolderImages(this.data);
+  FolderImages(this.data, this.folder);
 }
 
 class SelectedImage {

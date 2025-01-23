@@ -10,12 +10,12 @@ final selectedFolderProvider = StateProvider<String?>((ref) {
 final imageDataProvider = FutureProvider.autoDispose<FolderImages>((ref) async {
   final folder = ref.watch(selectedFolderProvider);
   if (folder == null || folder == "") {
-    return FolderImages([]);
+    return FolderImages([], folder ?? "");
   } else {
     const exifTool = ExifTool();
     final exifToolList = await exifTool.listImages(folder);
     final imageInfoList = exifToolList.map((exif) => ImageFileInfo.fromExifInfo(exif)).toList(growable: false);
-    return FolderImages(imageInfoList);
+    return FolderImages(imageInfoList, folder);
   }
 });
 

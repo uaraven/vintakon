@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:lens_attr/exif/common.dart';
 import 'package:lens_attr/exif/tags.dart';
 import 'package:lens_attr/model/file_info.dart';
+import 'package:path/path.dart' as p;
 
 final exifToolDateFormat = DateFormat('yyyy:MM:dd HH:mm:ssZ');
 
@@ -129,6 +130,18 @@ class ExifTool {
     } catch (e) {
       debugPrint(e.toString());
       return [];
+    }
+  }
+
+  Future<void> applyChanges(String directory, List<String> files, ExifChanges exifChanges) async {
+    final List<String> args = exifChanges.toExifTool();
+    args.addAll(files.map((file) => p.relative(file, from: directory)));
+    final exifTool = exifToolPath == "" ? "exiftool" : exifToolPath;
+    var execResult = await Process.run(exifTool, args,
+        workingDirectory: directory,
+        stderrEncoding: Encoding.getByName("utf-8"), stdoutEncoding: Encoding.getByName("utf-8"));
+    if (execResult.exitCode != 0) {
+      throw ExifToolError('exiftool error: ${execResult.stderr}');
     }
   }
 }
