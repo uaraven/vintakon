@@ -8,6 +8,7 @@ const tagMake = 'Make';
 const tagModel = 'Model';
 const tagLensMake = 'LensMake';
 const tagLensModel = 'LensModel';
+const tagLens = 'Lens';
 const tagLensInfo = 'LensInfo';
 const tagExposureCompensation = 'ExposureCompensation';
 const tagIso = 'ISO';

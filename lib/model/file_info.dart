@@ -179,11 +179,17 @@ class ExifChanges {
 
   List<String> toExifTool() {
     final sb = <String>[];
+    String? lensTag = null;
     if (make != null) {
       sb.add("-$tagLensMake=$make");
+      lensTag = make!;
     }
     if (model != null) {
       sb.add("-$tagLensModel=$model");
+      lensTag = (lensTag ?? "") + model!;
+    }
+    if (lensTag != null) {
+      sb.add("-$tagLens=$lensTag");
     }
     if (focalLength != null) {
       sb.add("-$tagFocalLength=$focalLength");

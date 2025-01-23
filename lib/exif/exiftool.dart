@@ -134,7 +134,8 @@ class ExifTool {
   }
 
   Future<void> applyChanges(String directory, List<String> files, ExifChanges exifChanges) async {
-    final List<String> args = exifChanges.toExifTool();
+    final List<String> args = ["-q"];
+    args.addAll(exifChanges.toExifTool());
     args.addAll(files.map((file) => p.relative(file, from: directory)));
     final exifTool = exifToolPath == "" ? "exiftool" : exifToolPath;
     var execResult = await Process.run(exifTool, args,
