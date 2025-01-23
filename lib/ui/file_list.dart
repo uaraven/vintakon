@@ -13,56 +13,48 @@ class FileList extends ConsumerWidget {
     final currentImage = ref.watch(selectedImageProvider);
     final checked = ref.watch(checkedImagesProvider);
 
-    return ListView.separated(
+    return ListView.builder(
       itemBuilder: (BuildContext context, int index) {
-        return fromImageData(context,
-            ref,
-            checked,
-            imageData[index],
-            imageData[index].filePath == currentImage?.filePath);
-      },
-      separatorBuilder: (BuildContext context, int index) {
-        return const Divider();
+        return fromImageData(
+            context, ref, checked, imageData[index], imageData[index].filePath == currentImage?.filePath);
       },
       itemCount: imageData.length,
     );
   }
 
-  Widget fromImageData(BuildContext context,
-      WidgetRef ref,
-      Set<String> checked,
-      ImageFileInfo image,
-      bool isSelected) {
-    final txtStyle = isSelected
-        ? const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
-        : const TextStyle(fontSize: 16);
+  Widget fromImageData(BuildContext context, WidgetRef ref, Set<String> checked, ImageFileInfo image, bool isSelected) {
+    const txtStyle = TextStyle(fontSize: 16);
 
     return InkWell(
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Wrap(
-          children: [
-            Checkbox(
-                value: checked.contains(image.filePath), onChanged: (value) {
-                  if (value ?? false) {
-                    ref.read(checkedImagesProvider.notifier).addCheckedImage(image.filePath);
-                  } else {
-                    ref.read(checkedImagesProvider.notifier).removeCheckedImage(image.filePath);
-                  }
-            }),
-            const SizedBox(width: 8,),
-            Text(
-              image.fileName(),
-              style: txtStyle,
-            ),
-          ],
+      child: Card(
+        color: isSelected ? Theme.of(context).primaryColorLight : null,
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Checkbox(
+                  value: checked.contains(image.filePath),
+                  onChanged: (value) {
+                    if (value ?? false) {
+                      ref.read(checkedImagesProvider.notifier).addCheckedImage(image.filePath);
+                    } else {
+                      ref.read(checkedImagesProvider.notifier).removeCheckedImage(image.filePath);
+                    }
+                  }),
+              const SizedBox(
+                width: 8,
+              ),
+              Text(
+                image.fileName(),
+                style: txtStyle,
+              ),
+            ],
+          ),
         ),
       ),
       onTap: () {
-        ref
-            .read(selectedImageProvider.notifier)
-            .state =
-            SelectedImage(image.filePath, image);
+        ref.read(selectedImageProvider.notifier).state = SelectedImage(image.filePath, image);
       },
     );
   }

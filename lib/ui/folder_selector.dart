@@ -38,6 +38,7 @@ class FolderSelector extends HookConsumerWidget {
                 if (folder != null) {
                   ref.read(checkedImagesProvider.notifier).clear();
                   ref.read(selectedFolderProvider.notifier).state = folder;
+                  ref.read(selectedImageProvider.notifier).state = null;
                 }
               });
             },

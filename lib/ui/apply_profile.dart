@@ -7,7 +7,7 @@ import 'package:lens_attr/model/config.dart';
 import 'package:lens_attr/model/file_info.dart';
 import 'package:lens_attr/model/state.dart';
 
-const headerSize = 200.0;
+const headerSize = 100.0;
 
 class ApplyProfile extends HookConsumerWidget {
   final FolderImages images;
@@ -17,7 +17,8 @@ class ApplyProfile extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final config = ref.watch(configProvider);
-    final checkedImagesExist = ref.watch(checkedImagesProvider).isNotEmpty;
+    var checkedImages = ref.watch(checkedImagesProvider);
+    final checkedImagesExist = checkedImages.isNotEmpty;
 
     final selectedLensProfile = useState("");
     if (!config.lensProfiles.any((p) => p.name == selectedLensProfile.value)) {
@@ -37,19 +38,20 @@ class ApplyProfile extends HookConsumerWidget {
                   onChanged: !checkedImagesExist
                       ? null
                       : (value) {
-                          lensProfileChecked.value = value ?? false;
-                        }),
+                    lensProfileChecked.value = value ?? false;
+                  }),
               const SizedBox(width: headerSize, child: Text("Lens profile")),
               Expanded(
-                child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                        value: selectedLensProfile.value,
-                        onChanged: lensProfileChecked.value
-                            ? (value) {
-                                selectedLensProfile.value = value.toString();
-                              }
-                            : null,
-                        items: listProfiles(config))),
+                child: DropdownButton<String>(
+                    borderRadius: BorderRadius.circular(10),
+                    isExpanded: true,
+                    value: selectedLensProfile.value,
+                    onChanged: lensProfileChecked.value
+                        ? (value) {
+                      selectedLensProfile.value = value.toString();
+                    }
+                        : null,
+                    items: listProfiles(config)),
               ),
             ]),
             Row(
@@ -59,16 +61,16 @@ class ApplyProfile extends HookConsumerWidget {
                     onChanged: !checkedImagesExist
                         ? null
                         : (value) {
-                            apertureChecked.value = value ?? false;
-                          }),
+                      apertureChecked.value = value ?? false;
+                    }),
                 const SizedBox(width: headerSize, child: Text("Aperture")),
                 Expanded(
                     child: TextField(
-                  controller: apertureEditController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: false),
-                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]*'))],
-                  enabled: checkedImagesExist && apertureChecked.value,
-                )),
+                      controller: apertureEditController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: false),
+                      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]*'))],
+                      enabled: checkedImagesExist && apertureChecked.value,
+                    )),
               ],
             ),
           ]),
@@ -81,10 +83,13 @@ class ApplyProfile extends HookConsumerWidget {
           child: Column(children: [
             ElevatedButton(
                 onPressed: checkedImagesExist
-                    ? () => applyChanges(context, ref, apertureChecked.value ? apertureEditController.text : null,
+                    ? () =>
+                    applyChanges(context, ref, apertureChecked.value ? apertureEditController.text : null,
                         lensProfileChecked.value ? selectedLensProfile.value : null)
                     : null,
-                child: const Text("Apply"))
+                child: Text(
+                    !checkedImagesExist ? "Apply" : ("Apply to ${checkedImages.length} ${checkedImages.length >
+                        1 ? "files" : "file"}")))
           ]),
         ),
       ]),
@@ -110,7 +115,9 @@ class ApplyProfile extends HookConsumerWidget {
         .map((file) => file.filePath)
         .toList(growable: false);
 
-    final lensProfile = config.lensProfiles.where((profile) => profile.name == profileName).firstOrNull;
+    final lensProfile = config.lensProfiles
+        .where((profile) => profile.name == profileName)
+        .firstOrNull;
 
     final changes = ExifChanges.of(lensProfile, aperture);
 
@@ -119,9 +126,9 @@ class ApplyProfile extends HookConsumerWidget {
     exiftool
         .applyChanges(images.folder, targets, changes)
         .onError(
-          //FIXME: Show error
+      //FIXME: Show error
           (error, stackTrace) {},
-        )
+    )
         .then((value) {
       ref.read(checkedImagesProvider.notifier).clear();
       return ref.refresh(imageDataProvider.future);
