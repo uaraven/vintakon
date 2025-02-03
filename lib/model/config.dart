@@ -112,11 +112,11 @@ class Config {
     String configDir;
     if (Platform.isWindows) {
       configDir = p.join(
-          Platform.environment['LOCALAPPDATA'] ?? p.join(Platform.environment['USER'] ?? "", "config"), "vintaperture");
+          Platform.environment['LOCALAPPDATA'] ?? p.join(Platform.environment['USER'] ?? "", "config"), "vintakon");
     } else {
       configDir = p.join(
           Platform.environment['XDG_CONFIG_HOME'] ?? p.join(Platform.environment['HOME'] ?? "", ".config"),
-          "vintaperture");
+          "vintakon");
     }
     return configDir;
   }

@@ -23,6 +23,7 @@ class FolderSelector extends HookConsumerWidget {
               : const TextStyle(fontSize: 16),
               textAlign: filePath == null || filePath == "" ? TextAlign.end : TextAlign.start,
         )),
+        const SizedBox(width: 8),
         ElevatedButton(
             onPressed: () {
               FilesystemPicker.open(

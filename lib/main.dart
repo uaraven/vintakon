@@ -15,7 +15,7 @@ class MyApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(configProvider);
     return MaterialApp(
-      title: 'Vintage Lens Updater',
+      title: 'Vintakon - Vintage Lens Exif tool',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
