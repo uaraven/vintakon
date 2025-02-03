@@ -1,5 +1,7 @@
 # Vintakon
 
+![](data/app_icon_256.png)
+
 Exiftool UI to edit vintage lens parameters.
 
 Vintakon allows one to create profiles for lenses that don't provide exif information
