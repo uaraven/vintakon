@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lens_attr/exif/exiftool.dart';
 import 'package:lens_attr/model/config.dart';
