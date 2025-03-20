@@ -23,7 +23,9 @@ class FileList extends ConsumerWidget {
   }
 
   Widget fromImageData(BuildContext context, WidgetRef ref, Set<String> checked, ImageFileInfo image, bool isSelected) {
-    const txtStyle = TextStyle(fontSize: 16);
+    final txtStyle = image.lensInfo.isEmpty()
+        ? const TextStyle(fontSize: 16)
+        : const TextStyle(color: Colors.lightBlue, fontSize: 16);
 
     return InkWell(
       child: Card(
