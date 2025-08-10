@@ -112,5 +112,5 @@ pub(crate) struct ExifInfo {
     pub shutter_speed: Option<String>,
     pub focal_length: Option<String>,
     pub focal_length_35mm: Option<String>,
-    pub preview_base64: Option<String>,
+    pub preview_image: Option<image::DynamicImage>,
 }
