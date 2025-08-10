@@ -29,14 +29,14 @@ impl ExifInfoRaw {
 
 pub(crate) enum LensInfo {
     Zoom {
-        min_f: f32,
-        max_f: f32,
-        min_focal_length: f32,
-        max_focal_legth: f32,
+        min_f: String,
+        max_f: String,
+        min_focal_length: String,
+        max_focal_legth: String,
     },
     Prime {
-        min_f: f32,
-        focal_length: f32,
+        min_f: String,
+        focal_length: String,
     },
 }
 
@@ -44,16 +44,23 @@ impl LensInfo {
     pub fn from_string(lens_info: &str) -> Option<Self> {
         let parts: Vec<&str> = lens_info.split(' ').collect();
         if parts.len() == 4 {
-            Some(Self::Zoom {
-                min_f: parts[0].parse().ok()?,
-                max_f: parts[1].parse().ok()?,
-                min_focal_length: parts[2].parse().ok()?,
-                max_focal_legth: parts[3].parse().ok()?,
-            })
+            if parts[0] == parts[1] && parts[2] == parts[3] {
+                Some(Self::Prime {
+                    focal_length: parts[0].to_string(),
+                    min_f: parts[2].to_string(),
+                })
+            } else {
+                Some(Self::Zoom {
+                    min_focal_length: parts[0].to_string(),
+                    max_focal_legth: parts[1].to_string(),
+                    min_f: parts[2].to_string(),
+                    max_f: parts[3].to_string(),
+                })
+            }
         } else if parts.len() == 2 {
             Some(Self::Prime {
-                min_f: parts[0].parse().ok()?,
-                focal_length: parts[1].parse().ok()?,
+                focal_length: parts[0].to_string(),
+                min_f: parts[1].to_string(),
             })
         } else {
             None
@@ -72,15 +79,15 @@ impl Display for LensInfo {
             } => {
                 write!(
                     f,
-                    "f/{}-{} ({}-{}mm)",
-                    min_f, max_f, min_focal_length, max_focal_legth
+                    "{}-{}mm f/{}-{}",
+                    min_focal_length, max_focal_legth, min_f, max_f
                 )
             }
             Self::Prime {
                 min_f,
                 focal_length,
             } => {
-                write!(f, "f/{} ({}mm)", min_f, focal_length)
+                write!(f, "{}mm f/{}", focal_length, min_f)
             }
         }
     }
