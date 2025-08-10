@@ -1,6 +1,8 @@
 use iced::widget::{button, column, text};
 use iced::{Element, Settings, Task};
 
+mod exif;
+
 #[derive(Default)]
 struct VintakonApp {
     path: Option<String>,

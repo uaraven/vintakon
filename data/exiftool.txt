@@ -1,0 +1,1 @@
+exiftool -j -b -q -api structformat=jsonq -FileModifyDate -Make -Model -LensMake -LensModel -LensInfo# -ExposureCompensation -ISO -Aperture -ShutterSpeed -FocalLength -FocalLengthIn35mmFormat -PreviewImage -JpgFromRaw -ThumbnailImage *
