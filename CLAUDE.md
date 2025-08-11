@@ -39,3 +39,13 @@ Lens profile contains following information:
  - lens focal length in 35mm equivalent
  - lensInfo (f/min - f/max focalLengthMin - focalLengthMax);
 
+
+## Testing
+
+Test data is in `test-data` folder
+
+To run tests execute
+
+```shell
+cargo test
+```

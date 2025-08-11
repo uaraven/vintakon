@@ -32,7 +32,7 @@ pub(crate) enum LensInfo {
         min_f: String,
         max_f: String,
         min_focal_length: String,
-        max_focal_legth: String,
+        max_focal_length: String,
     },
     Prime {
         min_f: String,
@@ -52,7 +52,7 @@ impl LensInfo {
             } else {
                 Some(Self::Zoom {
                     min_focal_length: parts[0].to_string(),
-                    max_focal_legth: parts[1].to_string(),
+                    max_focal_length: parts[1].to_string(),
                     min_f: parts[2].to_string(),
                     max_f: parts[3].to_string(),
                 })
@@ -75,12 +75,12 @@ impl Display for LensInfo {
                 min_f,
                 max_f,
                 min_focal_length,
-                max_focal_legth,
+                max_focal_length,
             } => {
                 write!(
                     f,
                     "{}-{}mm f/{}-{}",
-                    min_focal_length, max_focal_legth, min_f, max_f
+                    min_focal_length, max_focal_length, min_f, max_f
                 )
             }
             Self::Prime {
