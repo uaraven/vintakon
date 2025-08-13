@@ -1,32 +1,8 @@
 use std::fmt::Display;
 
 use chrono::DateTime;
-use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-struct ExifInfoRaw {
-    pub file_path: String,
-    pub mod_time: Option<String>,
-    pub make: Option<String>,
-    pub model: Option<String>,
-    pub lens_make: Option<String>,
-    pub lens_model: Option<String>,
-    pub lens_info: Option<String>,
-    pub exposure_compensation: Option<String>,
-    pub iso: Option<String>,
-    pub aperture: Option<String>,
-    pub shutter_speed: Option<String>,
-    pub focal_length: Option<String>,
-    pub focal_length_35mm: Option<String>,
-    pub preview_base64: Option<String>,
-}
-
-impl ExifInfoRaw {
-    pub fn new_from_json(json: String) -> Self {
-        serde_json::from_str(&json).unwrap()
-    }
-}
-
+#[derive(Debug, Clone)]
 pub(crate) enum LensInfo {
     Zoom {
         min_f: String,
@@ -98,6 +74,7 @@ pub(crate) struct ExifTag {
     pub value: String,
 }
 
+#[derive(Debug, Clone)]
 pub(crate) struct ExifInfo {
     pub file_path: String,
     pub mod_time: DateTime<chrono::Utc>,
