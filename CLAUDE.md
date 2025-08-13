@@ -49,3 +49,7 @@ To run tests execute
 ```shell
 cargo test
 ```
+
+## UI
+
+UI is built using iced library. 
