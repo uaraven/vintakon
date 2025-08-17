@@ -1,6 +1,6 @@
 use iced::{
     Element, Length, Task, Theme,
-    widget::{Container, button, checkbox, column, row, scrollable, text},
+    widget::{Container, button, checkbox, column, progress_bar, row, scrollable, text},
 };
 use rfd::AsyncFileDialog;
 
@@ -12,12 +12,14 @@ pub(crate) enum Message {
     LoadImages((String, Vec<FileRec>)),
     SelectFolder,
     FileSelectionToggled(usize, bool),
+    LoadingStarted,
 }
 
 #[derive(Default)]
 pub(crate) struct VintakonApp {
     path: Option<String>,
     images: Vec<FileRec>,
+    is_loading: bool,
 }
 
 impl VintakonApp {
@@ -28,11 +30,13 @@ impl VintakonApp {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::PathChange(new_path) => {
+                self.is_loading = true;
                 return Task::perform(load_images(new_path), Message::LoadImages);
             }
             Message::LoadImages(folder_images) => {
                 self.images = folder_images.1;
                 self.path = Some(folder_images.0);
+                self.is_loading = false;
             }
             Message::SelectFolder => {
                 return Task::perform(select_folder(), Message::PathChange);
@@ -41,6 +45,9 @@ impl VintakonApp {
                 if let Some(file_rec) = self.images.get_mut(index) {
                     file_rec.set_selected(selected);
                 }
+            }
+            Message::LoadingStarted => {
+                self.is_loading = true;
             }
         }
         Task::none()
@@ -61,7 +68,18 @@ impl VintakonApp {
         .padding(10)
         .spacing(10);
 
-        let content: Element<Message, Theme> = if self.images.is_empty() {
+        let content: Element<Message, Theme> = if self.is_loading {
+            Container::<Message, Theme>::new(
+                column![text("Loading images...").size(16)]
+                    .spacing(10)
+                    .align_x(iced::Alignment::Center),
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into()
+        } else if self.images.is_empty() {
             Container::<Message, Theme>::new(text(
                 "No images loaded. Select a folder to get started.",
             ))
