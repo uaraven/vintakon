@@ -38,4 +38,8 @@ impl FileRec {
     pub fn mod_time(&self) -> &chrono::DateTime<chrono::Utc> {
         &self.exif_info.mod_time
     }
+
+    pub fn exif_info(&self) -> &crate::exif::exif::ExifInfo {
+        &self.exif_info
+    }
 }
