@@ -1,6 +1,6 @@
 use iced::{
-    Element, Length, Task,
-    widget::{button, row, text},
+    Element, Length, Task, Theme,
+    widget::{Container, button, checkbox, column, row, scrollable, text},
 };
 use rfd::AsyncFileDialog;
 
@@ -11,6 +11,7 @@ pub(crate) enum Message {
     PathChange(String),
     LoadImages((String, Vec<FileRec>)),
     SelectFolder,
+    FileSelectionToggled(usize, bool),
 }
 
 #[derive(Default)]
@@ -36,22 +37,92 @@ impl VintakonApp {
             Message::SelectFolder => {
                 return Task::perform(select_folder(), Message::PathChange);
             }
+            Message::FileSelectionToggled(index, selected) => {
+                if let Some(file_rec) = self.images.get_mut(index) {
+                    file_rec.set_selected(selected);
+                }
+            }
         }
         Task::none()
     }
 
-    pub fn view(&self) -> Element<Message> {
-        row![
+    pub fn view(&self) -> Element<Message, Theme> {
+        let header = row![
             text(format!(
-                "Current Path: {}",
-                self.path.as_deref().unwrap_or("No Path Selected")
+                "{}",
+                self.path
+                    .as_deref()
+                    .unwrap_or("<Select a folder with images>")
             ))
-            .size(24)
+            .size(20)
             .width(Length::Fill),
             button("Select Folder").on_press(Message::SelectFolder),
         ]
-        .padding(20)
-        .spacing(10)
+        .padding(10)
+        .spacing(10);
+
+        let content: Element<Message, Theme> = if self.images.is_empty() {
+            Container::<Message, Theme>::new(text(
+                "No images loaded. Select a folder to get started.",
+            ))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into()
+        } else {
+            let mut sorted_images: Vec<(usize, &FileRec)> =
+                self.images.iter().enumerate().collect();
+            sorted_images.sort_by(|a, b| a.1.file_name().cmp(&b.1.file_name()));
+
+            let file_list = column(
+                sorted_images
+                    .into_iter()
+                    .map(|(original_index, file_rec)| {
+                        let mod_time_str =
+                            file_rec.mod_time().format("%Y-%m-%d %H:%M:%S").to_string();
+
+                        row![
+                            checkbox("", file_rec.is_selected()).on_toggle(move |selected| {
+                                Message::FileSelectionToggled(original_index, selected)
+                            }),
+                            column![
+                                text(file_rec.file_name()).size(16),
+                                text(mod_time_str).size(12)
+                            ]
+                            .spacing(2)
+                            .width(Length::Fill)
+                        ]
+                        .spacing(10)
+                        .padding(5)
+                        .into()
+                    })
+                    .collect::<Vec<Element<Message, Theme>>>(),
+            )
+            .spacing(5)
+            .padding(10);
+
+            scrollable(file_list)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
+        };
+
+        column![
+            header,
+            row![
+                Container::<Message, Theme>::new(content)
+                    .width(Length::FillPortion(1))
+                    .height(Length::Fill),
+                Container::<Message, Theme>::new(text("Right panel placeholder"))
+                    .width(Length::FillPortion(1))
+                    .height(Length::Fill)
+                    .center_x(Length::Fill)
+                    .center_y(Length::Fill)
+            ]
+            .height(Length::Fill)
+        ]
+        .height(Length::Fill)
         .into()
     }
 }

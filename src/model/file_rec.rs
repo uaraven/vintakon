@@ -18,4 +18,24 @@ impl FileRec {
         self.exif_info.lens_info.is_some()
             || (self.exif_info.lens_model.is_some() && self.exif_info.lens_make.is_some())
     }
+
+    pub fn is_selected(&self) -> bool {
+        self.selected
+    }
+
+    pub fn set_selected(&mut self, selected: bool) {
+        self.selected = selected;
+    }
+
+    pub fn file_name(&self) -> String {
+        std::path::Path::new(&self.exif_info.file_path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("Unknown")
+            .to_string()
+    }
+
+    pub fn mod_time(&self) -> &chrono::DateTime<chrono::Utc> {
+        &self.exif_info.mod_time
+    }
 }
