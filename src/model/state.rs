@@ -190,7 +190,16 @@ impl VintakonApp {
                 text("Selected file not found").into()
             }
         } else {
-            text("Select a file to view preview and metadata").into()
+            Container::<Message, Theme>::new(
+                text("Select a file to view preview and metadata")
+                    .align_x(iced::Alignment::Center)
+                    .align_y(iced::Alignment::Center),
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into()
         }
     }
 
