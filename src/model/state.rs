@@ -59,22 +59,143 @@ impl VintakonApp {
         Task::none()
     }
 
-    pub fn view(&self) -> Element<Message, Theme> {
-        let header = row![
-            text(format!(
-                "{}",
-                self.path
-                    .as_deref()
-                    .unwrap_or("<Select a folder with images>")
-            ))
-            .size(20)
-            .width(Length::Fill),
-            button("Select Folder").on_press(Message::SelectFolder),
-        ]
-        .padding(10)
-        .spacing(10);
+    fn view_file_list(&self) -> Element<Message, Theme> {
+        let mut sorted_images: Vec<(usize, &FileRec)> = self.images.iter().enumerate().collect();
+        sorted_images.sort_by(|a, b| a.1.file_name().cmp(&b.1.file_name()));
 
-        let content: Element<Message, Theme> = if self.is_loading {
+        let file_list = column(
+            sorted_images
+                .into_iter()
+                .map(|(original_index, file_rec)| {
+                    let mod_time_str = file_rec.mod_time().format("%Y-%m-%d %H:%M:%S").to_string();
+
+                    let is_selected_file = self.selected_file_index == Some(original_index);
+
+                    let file_row = row![
+                        checkbox("", file_rec.is_selected()).on_toggle(move |selected| {
+                            Message::FileSelectionToggled(original_index, selected)
+                        }),
+                        column![
+                            text(file_rec.file_name()).size(16),
+                            text(mod_time_str).size(12)
+                        ]
+                        .spacing(2)
+                        .width(Length::Fill)
+                    ]
+                    .spacing(10);
+
+                    if is_selected_file {
+                        Container::new(file_row)
+                            .padding(5)
+                            .style(|theme: &Theme| {
+                                use iced::Background;
+                                iced::widget::container::Style {
+                                    background: Some(Background::Color(theme.palette().primary)),
+                                    ..Default::default()
+                                }
+                            })
+                            .into()
+                    } else {
+                        button(file_row)
+                            .padding(5)
+                            .style(|theme: &Theme, _status| iced::widget::button::Style {
+                                background: None,
+                                text_color: theme.palette().text,
+                                border: iced::Border::default(),
+                                shadow: iced::Shadow::default(),
+                            })
+                            .on_press(Message::FileClicked(original_index))
+                            .into()
+                    }
+                })
+                .collect::<Vec<Element<Message, Theme>>>(),
+        )
+        .spacing(5)
+        .padding(10);
+
+        scrollable(file_list)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    }
+
+    fn view_image_preview(&self) -> Element<Message, Theme> {
+        if let Some(selected_index) = self.selected_file_index {
+            if let Some(selected_file) = self.images.get(selected_index) {
+                let exif_info = selected_file.exif_info();
+
+                let mut preview_content = column![
+                    text(selected_file.file_name()).size(18),
+                    text(format!(
+                        "Modified: {}",
+                        selected_file.mod_time().format("%Y-%m-%d %H:%M:%S")
+                    ))
+                    .size(12)
+                ]
+                .spacing(10)
+                .padding(10);
+
+                if let Some(preview_img) = &exif_info.preview_image {
+                    let img_handle = image::Handle::from_rgba(
+                        preview_img.width(),
+                        preview_img.height(),
+                        preview_img.to_rgba8().into_raw(),
+                    );
+
+                    preview_content = preview_content.push(
+                        image(img_handle)
+                            .width(Length::Fill)
+                            .height(Length::Fixed(300.0)),
+                    );
+                }
+
+                // Add metadata section
+                let mut metadata = column![].spacing(5);
+
+                if let Some(make) = &exif_info.make {
+                    metadata = metadata.push(text(format!("Make: {}", make)).size(12));
+                }
+                if let Some(model) = &exif_info.model {
+                    metadata = metadata.push(text(format!("Model: {}", model)).size(12));
+                }
+                if let Some(lens_make) = &exif_info.lens_make {
+                    metadata = metadata.push(text(format!("Lens Make: {}", lens_make)).size(12));
+                }
+                if let Some(lens_model) = &exif_info.lens_model {
+                    metadata = metadata.push(text(format!("Lens Model: {}", lens_model)).size(12));
+                }
+                if let Some(iso) = &exif_info.iso {
+                    metadata = metadata.push(text(format!("ISO: {}", iso)).size(12));
+                }
+                if let Some(aperture) = &exif_info.aperture {
+                    metadata = metadata.push(text(format!("Aperture: {}", aperture)).size(12));
+                }
+                if let Some(shutter_speed) = &exif_info.shutter_speed {
+                    metadata =
+                        metadata.push(text(format!("Shutter Speed: {}", shutter_speed)).size(12));
+                }
+                if let Some(focal_length) = &exif_info.focal_length {
+                    metadata =
+                        metadata.push(text(format!("Focal Length: {}", focal_length)).size(12));
+                }
+
+                preview_content = preview_content.push(metadata);
+
+                let scrollable_content: Element<Message, Theme> = scrollable(preview_content)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into();
+                scrollable_content
+            } else {
+                text("Selected file not found").into()
+            }
+        } else {
+            text("Select a file to view preview and metadata").into()
+        }
+    }
+
+    fn view_content_area(&self) -> Element<Message, Theme> {
+        if self.is_loading {
             Container::<Message, Theme>::new(
                 column![text("Loading images...").size(16)]
                     .spacing(10)
@@ -86,77 +207,42 @@ impl VintakonApp {
             .center_y(Length::Fill)
             .into()
         } else if self.images.is_empty() {
-            Container::<Message, Theme>::new(text(
-                "No images loaded. Select a folder to get started.",
-            ))
+            Container::<Message, Theme>::new(
+                text("No images loaded. Select a folder to get started.")
+                    .align_x(iced::Alignment::Center)
+                    .align_y(iced::Alignment::Center),
+            )
             .width(Length::Fill)
             .height(Length::Fill)
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .into()
         } else {
-            let mut sorted_images: Vec<(usize, &FileRec)> =
-                self.images.iter().enumerate().collect();
-            sorted_images.sort_by(|a, b| a.1.file_name().cmp(&b.1.file_name()));
+            self.view_file_list()
+        }
+    }
 
-            let file_list = column(
-                sorted_images
-                    .into_iter()
-                    .map(|(original_index, file_rec)| {
-                        let mod_time_str =
-                            file_rec.mod_time().format("%Y-%m-%d %H:%M:%S").to_string();
-                        
-                        let is_selected_file = self.selected_file_index == Some(original_index);
+    fn view_header(&self) -> Element<Message, Theme> {
+        row![
+            text(format!(
+                "{}",
+                self.path
+                    .as_deref()
+                    .unwrap_or("<Select a folder with images>")
+            ))
+            .size(20)
+            .width(Length::Fill),
+            button("Select Folder").on_press(Message::SelectFolder),
+        ]
+        .padding(10)
+        .spacing(10)
+        .into()
+    }
 
-                        let file_row = row![
-                            checkbox("", file_rec.is_selected()).on_toggle(move |selected| {
-                                Message::FileSelectionToggled(original_index, selected)
-                            }),
-                            column![
-                                text(file_rec.file_name()).size(16),
-                                text(mod_time_str).size(12)
-                            ]
-                            .spacing(2)
-                            .width(Length::Fill)
-                        ]
-                        .spacing(10);
-
-                        if is_selected_file {
-                            Container::new(file_row)
-                                .padding(5)
-                                .style(|theme: &Theme| {
-                                    use iced::Background;
-                                    iced::widget::container::Style {
-                                        background: Some(Background::Color(theme.palette().primary)),
-                                        ..Default::default()
-                                    }
-                                })
-                                .into()
-                        } else {
-                            button(file_row)
-                                .padding(5)
-                                .style(|theme: &Theme, _status| {
-                                    iced::widget::button::Style {
-                                        background: None,
-                                        text_color: theme.palette().text,
-                                        border: iced::Border::default(),
-                                        shadow: iced::Shadow::default(),
-                                    }
-                                })
-                                .on_press(Message::FileClicked(original_index))
-                                .into()
-                        }
-                    })
-                    .collect::<Vec<Element<Message, Theme>>>(),
-            )
-            .spacing(5)
-            .padding(10);
-
-            scrollable(file_list)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .into()
-        };
+    pub fn view(&self) -> Element<Message, Theme> {
+        let header = self.view_header();
+        let content = self.view_content_area();
+        let preview = self.view_image_preview();
 
         column![
             header,
@@ -164,78 +250,10 @@ impl VintakonApp {
                 Container::<Message, Theme>::new(content)
                     .width(Length::FillPortion(1))
                     .height(Length::Fill),
-Container::<Message, Theme>::new(
-                    if let Some(selected_index) = self.selected_file_index {
-                        if let Some(selected_file) = self.images.get(selected_index) {
-                            let exif_info = selected_file.exif_info();
-                            
-                            let mut preview_content = column![
-                                text(selected_file.file_name()).size(18),
-                                text(format!("Modified: {}", selected_file.mod_time().format("%Y-%m-%d %H:%M:%S"))).size(12)
-                            ]
-                            .spacing(10)
-                            .padding(10);
-
-                            if let Some(preview_img) = &exif_info.preview_image {
-                                let img_handle = image::Handle::from_rgba(
-                                    preview_img.width(),
-                                    preview_img.height(),
-                                    preview_img.to_rgba8().into_raw(),
-                                );
-                                
-                                preview_content = preview_content.push(
-                                    image(img_handle)
-                                        .width(Length::Fill)
-                                        .height(Length::Fixed(300.0))
-                                );
-                            }
-
-                            // Add metadata section
-                            let mut metadata = column![]
-                                .spacing(5);
-
-                            if let Some(make) = &exif_info.make {
-                                metadata = metadata.push(text(format!("Make: {}", make)).size(12));
-                            }
-                            if let Some(model) = &exif_info.model {
-                                metadata = metadata.push(text(format!("Model: {}", model)).size(12));
-                            }
-                            if let Some(lens_make) = &exif_info.lens_make {
-                                metadata = metadata.push(text(format!("Lens Make: {}", lens_make)).size(12));
-                            }
-                            if let Some(lens_model) = &exif_info.lens_model {
-                                metadata = metadata.push(text(format!("Lens Model: {}", lens_model)).size(12));
-                            }
-                            if let Some(iso) = &exif_info.iso {
-                                metadata = metadata.push(text(format!("ISO: {}", iso)).size(12));
-                            }
-                            if let Some(aperture) = &exif_info.aperture {
-                                metadata = metadata.push(text(format!("Aperture: {}", aperture)).size(12));
-                            }
-                            if let Some(shutter_speed) = &exif_info.shutter_speed {
-                                metadata = metadata.push(text(format!("Shutter Speed: {}", shutter_speed)).size(12));
-                            }
-                            if let Some(focal_length) = &exif_info.focal_length {
-                                metadata = metadata.push(text(format!("Focal Length: {}", focal_length)).size(12));
-                            }
-
-                            preview_content = preview_content.push(metadata);
-
-                            let scrollable_content: Element<Message, Theme> = scrollable(preview_content)
-                                .width(Length::Fill)
-                                .height(Length::Fill)
-                                .into();
-                            scrollable_content
-                        } else {
-                            text("Selected file not found").into()
-                        }
-                    } else {
-                        text("Select a file to view preview and metadata").into()
-                    }
-                )
-                .width(Length::FillPortion(1))
-                .height(Length::Fill)
-                .padding(10)
+                Container::<Message, Theme>::new(preview)
+                    .width(Length::FillPortion(1))
+                    .height(Length::Fill)
+                    .padding(10)
             ]
             .height(Length::Fill)
         ]
