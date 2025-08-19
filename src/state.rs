@@ -1,6 +1,9 @@
 use iced::{
     Element, Length, Task, Theme,
-    widget::{Container, Rule, button, checkbox, column, image, row, scrollable, text},
+    widget::{
+        Container, Rule, button, checkbox, column, image, pick_list, row, scrollable, text,
+        text_input,
+    },
 };
 use rfd::AsyncFileDialog;
 
@@ -16,6 +19,8 @@ pub(crate) enum Message {
     SelectFolder,
     FileSelectionToggled(usize, bool),
     FileClicked(usize),
+    ProfileChange(String),
+    ApertureChange(String),
 }
 
 #[derive(Default)]
@@ -25,6 +30,9 @@ pub(crate) struct VintakonApp {
     is_loading: bool,
     selected_file_index: Option<usize>,
     config: Option<Config>,
+    profile_names: Vec<String>,
+    selected_profile: Option<String>,
+    apply_aperture: String,
 }
 
 impl VintakonApp {
@@ -36,7 +44,14 @@ impl VintakonApp {
                 images: Vec::new(),
                 is_loading: false,
                 selected_file_index: None,
-                config: Some(config),
+                config: Some(config.clone()),
+                profile_names: config
+                    .lens_profiles
+                    .iter()
+                    .map(|p| p.name.clone())
+                    .collect(),
+                selected_profile: None,
+                apply_aperture: String::new(),
             },
             Task::none(),
         )
@@ -64,6 +79,12 @@ impl VintakonApp {
             }
             Message::FileClicked(index) => {
                 self.selected_file_index = Some(index);
+            }
+            Message::ProfileChange(profile) => {
+                self.selected_profile = Some(profile);
+            }
+            Message::ApertureChange(aperture) => {
+                self.apply_aperture = aperture;
             }
         }
         Task::none()
@@ -157,7 +178,7 @@ impl VintakonApp {
                     preview_content = preview_content.push(
                         image(img_handle)
                             .width(Length::Fill)
-                            .height(Length::Fixed(300.0)),
+                            .content_fit(iced::ContentFit::Contain),
                     );
                 }
 
@@ -268,16 +289,36 @@ impl VintakonApp {
         column![
             text("Apply Lens Profile").size(16),
             Rule::horizontal(5),
-            button("Apply").padding(10).style(|theme: &Theme, _status| {
-                iced::widget::button::Style {
-                    background: Some(theme.palette().primary.into()),
-                    text_color: theme.palette().text,
-                    border: iced::Border::default(),
-                    shadow: iced::Shadow::default(),
-                }
-            })
+            row![
+                column![
+                    row![
+                        text("Profile: ").size(14),
+                        pick_list(
+                            self.profile_names.clone(),
+                            self.selected_profile.clone(),
+                            Message::ProfileChange,
+                        )
+                        .width(Length::Fill),
+                    ]
+                    .spacing(10)
+                    .padding(5)
+                    .align_y(iced::Alignment::Center),
+                    row![
+                        text("Aperture: ").size(14),
+                        text_input("Aperture", &self.apply_aperture)
+                            .on_input(Message::ApertureChange)
+                            .width(Length::Fill),
+                    ]
+                    .spacing(10)
+                    .padding(5)
+                    .align_y(iced::Alignment::Center),
+                ],
+                button("Apply").padding(10)
+            ]
+            .spacing(10),
         ]
         .spacing(10)
+        .padding(10)
         .align_x(iced::Alignment::Center)
     }
 }
