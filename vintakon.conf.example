@@ -1,0 +1,25 @@
+{
+  "exiftool_path": "/usr/local/bin/exiftool",
+  "lens_profiles": [
+    {
+      "name": "Canon EF 50mm f/1.8",
+      "lens_make": "Canon",
+      "lens_model": "EF 50mm f/1.8 STM",
+      "min_focal_length": 50.0,
+      "max_focal_length": 50.0,
+      "min_aperture": "1.8",
+      "max_aperture": "1.8",
+      "crop_factor": 1.0
+    },
+    {
+      "name": "APSC Takumar 55mm f/1.8",
+      "lens_make": "Asahi Opt. Co.",
+      "lens_model": "SMC Takumar 55mm f/1.8",
+      "min_focal_length": 55.0,
+      "max_focal_length": 55.0,
+      "min_aperture": "1.8",
+      "max_aperture": "1.8",
+      "crop_factor": 1.5
+    }
+  ]
+}

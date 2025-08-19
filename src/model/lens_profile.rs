@@ -15,6 +15,7 @@ pub struct LensProfile {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    pub exiftool_path: Option<String>,
     pub lens_profiles: Vec<LensProfile>,
 }
 
@@ -22,8 +23,39 @@ impl Config {
     /// Creates a new empty Config
     pub fn new() -> Self {
         Self {
+            exiftool_path: None,
             lens_profiles: Vec::new(),
         }
+    }
+
+    /// Loads configuration with fallback logic:
+    /// 1. Try vintakon.conf in current directory
+    /// 2. Try config.json in $XDG_CONFIG_HOME/vintakon
+    /// 3. Return empty config if neither exists
+    pub fn load_with_fallback() -> Self {
+        // Try vintakon.conf in current directory first
+        if let Ok(config) = Self::load_from_file("vintakon.conf") {
+            return config;
+        }
+
+        // Try XDG_CONFIG_HOME/vintakon/config.json
+        if let Some(config_dir) = std::env::var_os("XDG_CONFIG_HOME") {
+            let config_path = Path::new(&config_dir).join("vintakon").join("config.json");
+            if let Ok(config) = Self::load_from_file(&config_path) {
+                return config;
+            }
+        }
+
+        // If XDG_CONFIG_HOME is not set, try ~/.config/vintakon/config.json
+        if let Some(home_dir) = std::env::var_os("HOME") {
+            let config_path = Path::new(&home_dir).join(".config").join("vintakon").join("config.json");
+            if let Ok(config) = Self::load_from_file(&config_path) {
+                return config;
+            }
+        }
+
+        // Return empty config if no files found
+        Self::new()
     }
 
     /// Saves the Config to a JSON file
@@ -66,31 +98,41 @@ mod tests {
     #[test]
     fn test_config_save_and_load() {
         let config = Config {
-            lens_profiles: vec![
-                LensProfile {
-                    name: "Test Lens".to_string(),
-                    lens_make: "Canon".to_string(),
-                    lens_model: "EF 50mm f/1.8".to_string(),
-                    min_focal_length: 50.0,
-                    max_focal_length: 50.0,
-                    min_aperture: "1.8".to_string(),
-                    max_aperture: "22".to_string(),
-                    crop_factor: 1.0,
-                },
-            ],
+            exiftool_path: None,
+            lens_profiles: vec![LensProfile {
+                name: "Test Lens".to_string(),
+                lens_make: "Canon".to_string(),
+                lens_model: "EF 50mm f/1.8".to_string(),
+                min_focal_length: 50.0,
+                max_focal_length: 50.0,
+                min_aperture: "1.8".to_string(),
+                max_aperture: "22".to_string(),
+                crop_factor: 1.0,
+            }],
         };
 
         let temp_file = "/tmp/test_config.json";
 
         // Test save
-        config.save_to_file(temp_file).expect("Failed to save config");
+        config
+            .save_to_file(temp_file)
+            .expect("Failed to save config");
 
         // Test load
         let loaded_config = Config::load_from_file(temp_file).expect("Failed to load config");
 
-        assert_eq!(config.lens_profiles.len(), loaded_config.lens_profiles.len());
-        assert_eq!(config.lens_profiles[0].name, loaded_config.lens_profiles[0].name);
-        assert_eq!(config.lens_profiles[0].lens_make, loaded_config.lens_profiles[0].lens_make);
+        assert_eq!(
+            config.lens_profiles.len(),
+            loaded_config.lens_profiles.len()
+        );
+        assert_eq!(
+            config.lens_profiles[0].name,
+            loaded_config.lens_profiles[0].name
+        );
+        assert_eq!(
+            config.lens_profiles[0].lens_make,
+            loaded_config.lens_profiles[0].lens_make
+        );
 
         // Clean up
         let _ = fs::remove_file(temp_file);
@@ -104,28 +146,31 @@ mod tests {
         let _ = fs::remove_file(non_existent_file);
 
         // Should create new config if file doesn't exist
-        let config = Config::load_or_create(non_existent_file).expect("Failed to load or create config");
+        let config =
+            Config::load_or_create(non_existent_file).expect("Failed to load or create config");
         assert_eq!(config.lens_profiles.len(), 0);
 
         // Create a test config file
         let test_config = Config {
-            lens_profiles: vec![
-                LensProfile {
-                    name: "Test Lens".to_string(),
-                    lens_make: "Sony".to_string(),
-                    lens_model: "FE 85mm f/1.8".to_string(),
-                    min_focal_length: 85.0,
-                    max_focal_length: 85.0,
-                    min_aperture: "1.8".to_string(),
-                    max_aperture: "22".to_string(),
-                    crop_factor: 1.0,
-                },
-            ],
+            exiftool_path: None,
+            lens_profiles: vec![LensProfile {
+                name: "Test Lens".to_string(),
+                lens_make: "Sony".to_string(),
+                lens_model: "FE 85mm f/1.8".to_string(),
+                min_focal_length: 85.0,
+                max_focal_length: 85.0,
+                min_aperture: "1.8".to_string(),
+                max_aperture: "22".to_string(),
+                crop_factor: 1.0,
+            }],
         };
-        test_config.save_to_file(non_existent_file).expect("Failed to save test config");
+        test_config
+            .save_to_file(non_existent_file)
+            .expect("Failed to save test config");
 
         // Should load existing config if file exists
-        let loaded_config = Config::load_or_create(non_existent_file).expect("Failed to load existing config");
+        let loaded_config =
+            Config::load_or_create(non_existent_file).expect("Failed to load existing config");
         assert_eq!(loaded_config.lens_profiles.len(), 1);
         assert_eq!(loaded_config.lens_profiles[0].name, "Test Lens");
 
@@ -146,7 +191,9 @@ mod tests {
         let temp_file = "/tmp/test_empty_config.json";
 
         // Test save empty config
-        config.save_to_file(temp_file).expect("Failed to save empty config");
+        config
+            .save_to_file(temp_file)
+            .expect("Failed to save empty config");
 
         // Test load empty config
         let loaded_config = Config::load_from_file(temp_file).expect("Failed to load empty config");
@@ -159,6 +206,7 @@ mod tests {
     #[test]
     fn test_config_multiple_lens_profiles() {
         let config = Config {
+            exiftool_path: None,
             lens_profiles: vec![
                 LensProfile {
                     name: "Canon Prime".to_string(),
@@ -196,16 +244,26 @@ mod tests {
         let temp_file = "/tmp/test_multiple_config.json";
 
         // Test save
-        config.save_to_file(temp_file).expect("Failed to save multiple lens config");
+        config
+            .save_to_file(temp_file)
+            .expect("Failed to save multiple lens config");
 
         // Test load
-        let loaded_config = Config::load_from_file(temp_file).expect("Failed to load multiple lens config");
+        let loaded_config =
+            Config::load_from_file(temp_file).expect("Failed to load multiple lens config");
 
-        assert_eq!(config.lens_profiles.len(), loaded_config.lens_profiles.len());
+        assert_eq!(
+            config.lens_profiles.len(),
+            loaded_config.lens_profiles.len()
+        );
         assert_eq!(loaded_config.lens_profiles.len(), 3);
 
         // Verify all profiles are loaded correctly
-        for (original, loaded) in config.lens_profiles.iter().zip(loaded_config.lens_profiles.iter()) {
+        for (original, loaded) in config
+            .lens_profiles
+            .iter()
+            .zip(loaded_config.lens_profiles.iter())
+        {
             assert_eq!(original.name, loaded.name);
             assert_eq!(original.lens_make, loaded.lens_make);
             assert_eq!(original.lens_model, loaded.lens_model);
@@ -260,36 +318,40 @@ mod tests {
     #[test]
     fn test_config_json_format() {
         let config = Config {
-            lens_profiles: vec![
-                LensProfile {
-                    name: "Test Lens".to_string(),
-                    lens_make: "TestMake".to_string(),
-                    lens_model: "TestModel".to_string(),
-                    min_focal_length: 35.0,
-                    max_focal_length: 85.0,
-                    min_aperture: "2.8".to_string(),
-                    max_aperture: "16".to_string(),
-                    crop_factor: 1.6,
-                },
-            ],
+            exiftool_path: None,
+            lens_profiles: vec![LensProfile {
+                name: "Test Lens".to_string(),
+                lens_make: "TestMake".to_string(),
+                lens_model: "TestModel".to_string(),
+                min_focal_length: 35.0,
+                max_focal_length: 85.0,
+                min_aperture: "2.8".to_string(),
+                max_aperture: "16".to_string(),
+                crop_factor: 1.6,
+            }],
         };
 
         let temp_file = "/tmp/test_format_config.json";
 
         // Save config
-        config.save_to_file(temp_file).expect("Failed to save config");
+        config
+            .save_to_file(temp_file)
+            .expect("Failed to save config");
 
         // Read the raw JSON and verify it's properly formatted
         let json_content = fs::read_to_string(temp_file).expect("Failed to read JSON file");
-        
+
         // Should be valid JSON
-        let parsed: serde_json::Value = serde_json::from_str(&json_content).expect("Invalid JSON format");
-        
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json_content).expect("Invalid JSON format");
+
         // Verify structure
         assert!(parsed.get("lens_profiles").is_some());
-        let profiles = parsed["lens_profiles"].as_array().expect("lens_profiles should be an array");
+        let profiles = parsed["lens_profiles"]
+            .as_array()
+            .expect("lens_profiles should be an array");
         assert_eq!(profiles.len(), 1);
-        
+
         let profile = &profiles[0];
         assert_eq!(profile["name"].as_str().unwrap(), "Test Lens");
         assert_eq!(profile["lens_make"].as_str().unwrap(), "TestMake");
@@ -312,5 +374,41 @@ mod tests {
 
         // Clean up
         let _ = fs::remove_file(temp_file);
+    }
+
+    #[test]
+    fn test_config_load_with_fallback() {
+        // Test with no config files - should return empty config
+        let config = Config::load_with_fallback();
+        assert_eq!(config.lens_profiles.len(), 0);
+        assert!(config.exiftool_path.is_none());
+
+        // Create vintakon.conf in current directory
+        let test_config = Config {
+            exiftool_path: Some("/usr/local/bin/exiftool".to_string()),
+            lens_profiles: vec![LensProfile {
+                name: "Test Local Lens".to_string(),
+                lens_make: "Local".to_string(),
+                lens_model: "Test 50mm".to_string(),
+                min_focal_length: 50.0,
+                max_focal_length: 50.0,
+                min_aperture: "1.8".to_string(),
+                max_aperture: "22".to_string(),
+                crop_factor: 1.0,
+            }],
+        };
+
+        test_config
+            .save_to_file("vintakon.conf")
+            .expect("Failed to save vintakon.conf");
+
+        // Test loading from vintakon.conf (should prefer this over XDG config)
+        let loaded_config = Config::load_with_fallback();
+        assert_eq!(loaded_config.lens_profiles.len(), 1);
+        assert_eq!(loaded_config.lens_profiles[0].name, "Test Local Lens");
+        assert_eq!(loaded_config.exiftool_path.as_deref(), Some("/usr/local/bin/exiftool"));
+
+        // Clean up
+        let _ = fs::remove_file("vintakon.conf");
     }
 }

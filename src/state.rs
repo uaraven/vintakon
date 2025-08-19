@@ -4,7 +4,10 @@ use iced::{
 };
 use rfd::AsyncFileDialog;
 
-use crate::{exif::exiftool::read_files, model::file_rec::FileRec};
+use crate::{
+    exif::exiftool::read_files,
+    model::{file_rec::FileRec, lens_profile::Config},
+};
 
 #[derive(Debug, Clone)]
 pub(crate) enum Message {
@@ -21,11 +24,22 @@ pub(crate) struct VintakonApp {
     images: Vec<FileRec>,
     is_loading: bool,
     selected_file_index: Option<usize>,
+    config: Option<Config>,
 }
 
 impl VintakonApp {
     pub fn new() -> (Self, Task<Message>) {
-        (Self::default(), Task::none())
+        let config = Config::load_with_fallback();
+        (
+            Self {
+                path: None,
+                images: Vec::new(),
+                is_loading: false,
+                selected_file_index: None,
+                config: Some(config),
+            },
+            Task::none(),
+        )
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
