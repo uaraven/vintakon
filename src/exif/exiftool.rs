@@ -83,6 +83,8 @@ pub(crate) fn read_files(path: &str) -> Vec<ExifInfo> {
         }
     }
 
+    exif_infos.sort_by(|a, b| a.file_path.cmp(&b.file_path));
+
     exif_infos
 }
 

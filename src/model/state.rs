@@ -1,6 +1,6 @@
 use iced::{
     Element, Length, Task, Theme,
-    widget::{Container, button, checkbox, column, image, row, scrollable, text},
+    widget::{Container, Rule, button, checkbox, column, image, row, scrollable, text},
 };
 use rfd::AsyncFileDialog;
 
@@ -13,7 +13,6 @@ pub(crate) enum Message {
     SelectFolder,
     FileSelectionToggled(usize, bool),
     FileClicked(usize),
-    LoadingStarted,
 }
 
 #[derive(Default)]
@@ -52,62 +51,17 @@ impl VintakonApp {
             Message::FileClicked(index) => {
                 self.selected_file_index = Some(index);
             }
-            Message::LoadingStarted => {
-                self.is_loading = true;
-            }
         }
         Task::none()
     }
 
+    /// Renders the file list
     fn view_file_list(&self) -> Element<Message, Theme> {
-        let mut sorted_images: Vec<(usize, &FileRec)> = self.images.iter().enumerate().collect();
-        sorted_images.sort_by(|a, b| a.1.file_name().cmp(&b.1.file_name()));
-
         let file_list = column(
-            sorted_images
-                .into_iter()
-                .map(|(original_index, file_rec)| {
-                    let mod_time_str = file_rec.mod_time().format("%Y-%m-%d %H:%M:%S").to_string();
-
-                    let is_selected_file = self.selected_file_index == Some(original_index);
-
-                    let file_row = row![
-                        checkbox("", file_rec.is_selected()).on_toggle(move |selected| {
-                            Message::FileSelectionToggled(original_index, selected)
-                        }),
-                        column![
-                            text(file_rec.file_name()).size(16),
-                            text(mod_time_str).size(12)
-                        ]
-                        .spacing(2)
-                        .width(Length::Fill)
-                    ]
-                    .spacing(10);
-
-                    if is_selected_file {
-                        Container::new(file_row)
-                            .padding(5)
-                            .style(|theme: &Theme| {
-                                use iced::Background;
-                                iced::widget::container::Style {
-                                    background: Some(Background::Color(theme.palette().primary)),
-                                    ..Default::default()
-                                }
-                            })
-                            .into()
-                    } else {
-                        button(file_row)
-                            .padding(5)
-                            .style(|theme: &Theme, _status| iced::widget::button::Style {
-                                background: None,
-                                text_color: theme.palette().text,
-                                border: iced::Border::default(),
-                                shadow: iced::Shadow::default(),
-                            })
-                            .on_press(Message::FileClicked(original_index))
-                            .into()
-                    }
-                })
+            self.images
+                .iter()
+                .enumerate()
+                .map(|(original_index, file_rec)| self.view_file_row(original_index, file_rec))
                 .collect::<Vec<Element<Message, Theme>>>(),
         )
         .spacing(5)
@@ -117,6 +71,50 @@ impl VintakonApp {
             .width(Length::Fill)
             .height(Length::Fill)
             .into()
+    }
+
+    /// Renders the single row of file list
+    fn view_file_row(&self, original_index: usize, file_rec: &FileRec) -> Element<Message, Theme> {
+        let mod_time_str = file_rec.mod_time().format("%Y-%m-%d %H:%M:%S").to_string();
+
+        let is_selected_file = self.selected_file_index == Some(original_index);
+
+        let file_row = row![
+            checkbox("", file_rec.is_selected()).on_toggle(move |selected| {
+                Message::FileSelectionToggled(original_index, selected)
+            }),
+            column![
+                text(file_rec.file_name()).size(16),
+                text(mod_time_str).size(12)
+            ]
+            .spacing(2)
+            .width(Length::Fill)
+        ]
+        .spacing(10);
+
+        if is_selected_file {
+            Container::new(file_row)
+                .padding(5)
+                .style(|theme: &Theme| {
+                    use iced::Background;
+                    iced::widget::container::Style {
+                        background: Some(Background::Color(theme.palette().primary)),
+                        ..Default::default()
+                    }
+                })
+                .into()
+        } else {
+            button(file_row)
+                .padding(5)
+                .style(|theme: &Theme, _status| iced::widget::button::Style {
+                    background: None,
+                    text_color: theme.palette().text,
+                    border: iced::Border::default(),
+                    shadow: iced::Shadow::default(),
+                })
+                .on_press(Message::FileClicked(original_index))
+                .into()
+        }
     }
 
     fn view_image_preview(&self) -> Element<Message, Theme> {
@@ -149,35 +147,7 @@ impl VintakonApp {
                     );
                 }
 
-                // Add metadata section
-                let mut metadata = column![].spacing(5);
-
-                if let Some(make) = &exif_info.make {
-                    metadata = metadata.push(text(format!("Make: {}", make)).size(12));
-                }
-                if let Some(model) = &exif_info.model {
-                    metadata = metadata.push(text(format!("Model: {}", model)).size(12));
-                }
-                if let Some(lens_make) = &exif_info.lens_make {
-                    metadata = metadata.push(text(format!("Lens Make: {}", lens_make)).size(12));
-                }
-                if let Some(lens_model) = &exif_info.lens_model {
-                    metadata = metadata.push(text(format!("Lens Model: {}", lens_model)).size(12));
-                }
-                if let Some(iso) = &exif_info.iso {
-                    metadata = metadata.push(text(format!("ISO: {}", iso)).size(12));
-                }
-                if let Some(aperture) = &exif_info.aperture {
-                    metadata = metadata.push(text(format!("Aperture: {}", aperture)).size(12));
-                }
-                if let Some(shutter_speed) = &exif_info.shutter_speed {
-                    metadata =
-                        metadata.push(text(format!("Shutter Speed: {}", shutter_speed)).size(12));
-                }
-                if let Some(focal_length) = &exif_info.focal_length {
-                    metadata =
-                        metadata.push(text(format!("Focal Length: {}", focal_length)).size(12));
-                }
+                let metadata = view_metadata(exif_info);
 
                 preview_content = preview_content.push(metadata);
 
@@ -232,19 +202,27 @@ impl VintakonApp {
     }
 
     fn view_header(&self) -> Element<Message, Theme> {
-        row![
-            text(format!(
-                "{}",
-                self.path
-                    .as_deref()
-                    .unwrap_or("<Select a folder with images>")
-            ))
-            .size(20)
-            .width(Length::Fill),
-            button("Select Folder").on_press(Message::SelectFolder),
+        let mut text = text(format!(
+            "{}",
+            self.path
+                .as_deref()
+                .unwrap_or("<Select a folder with images>")
+        ))
+        .size(16)
+        .width(Length::Fill);
+        if self.path.is_none() {
+            text = text.color(iced::Color::from_rgb(0.7, 0.7, 0.7));
+        }
+        column![
+            row![
+                text,
+                button("Select Folder").on_press(Message::SelectFolder),
+            ]
+            .align_y(iced::Alignment::Center)
+            .padding(5)
+            .spacing(5),
+            Rule::horizontal(5),
         ]
-        .padding(10)
-        .spacing(10)
         .into()
     }
 
@@ -269,6 +247,37 @@ impl VintakonApp {
         .height(Length::Fill)
         .into()
     }
+}
+
+fn view_metadata(exif_info: &crate::exif::exif::ExifInfo) -> iced::widget::Column<'_, Message> {
+    // Add metadata section
+    let mut metadata = column![].spacing(5);
+
+    if let Some(make) = &exif_info.make {
+        metadata = metadata.push(text(format!("Make: {}", make)).size(12));
+    }
+    if let Some(model) = &exif_info.model {
+        metadata = metadata.push(text(format!("Model: {}", model)).size(12));
+    }
+    if let Some(lens_make) = &exif_info.lens_make {
+        metadata = metadata.push(text(format!("Lens Make: {}", lens_make)).size(12));
+    }
+    if let Some(lens_model) = &exif_info.lens_model {
+        metadata = metadata.push(text(format!("Lens Model: {}", lens_model)).size(12));
+    }
+    if let Some(iso) = &exif_info.iso {
+        metadata = metadata.push(text(format!("ISO: {}", iso)).size(12));
+    }
+    if let Some(aperture) = &exif_info.aperture {
+        metadata = metadata.push(text(format!("Aperture: {}", aperture)).size(12));
+    }
+    if let Some(shutter_speed) = &exif_info.shutter_speed {
+        metadata = metadata.push(text(format!("Shutter Speed: {}", shutter_speed)).size(12));
+    }
+    if let Some(focal_length) = &exif_info.focal_length {
+        metadata = metadata.push(text(format!("Focal Length: {}", focal_length)).size(12));
+    }
+    metadata
 }
 
 async fn load_images(new_path: String) -> (String, Vec<FileRec>) {
