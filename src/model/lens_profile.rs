@@ -88,6 +88,24 @@ impl Config {
             }
         }
     }
+
+    /// Saves configuration to $XDG_CONFIG_HOME/vintakon/config.json or $HOME/.config/vintakon/config.json
+    pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let config_path = if let Some(config_home) = std::env::var_os("XDG_CONFIG_HOME") {
+            Path::new(&config_home).join("vintakon").join("config.json")
+        } else if let Some(home_dir) = std::env::var_os("HOME") {
+            Path::new(&home_dir).join(".config").join("vintakon").join("config.json")
+        } else {
+            return Err("Unable to determine config directory: neither XDG_CONFIG_HOME nor HOME environment variables are set".into());
+        };
+
+        // Create the parent directory if it doesn't exist
+        if let Some(parent_dir) = config_path.parent() {
+            fs::create_dir_all(parent_dir)?;
+        }
+
+        self.save_to_file(config_path)
+    }
 }
 
 #[cfg(test)]
