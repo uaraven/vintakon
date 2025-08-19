@@ -230,6 +230,7 @@ impl VintakonApp {
         let header = self.view_header();
         let content = self.view_content_area();
         let preview = self.view_image_preview();
+        let apply_pane = self.view_apply_profile();
 
         column![
             header,
@@ -242,10 +243,28 @@ impl VintakonApp {
                     .height(Length::Fill)
                     .padding(10)
             ]
-            .height(Length::Fill)
+            .height(Length::Fill),
+            apply_pane,
         ]
         .height(Length::Fill)
         .into()
+    }
+
+    fn view_apply_profile(&self) -> iced::widget::Column<'_, Message> {
+        column![
+            text("Apply Lens Profile").size(16),
+            Rule::horizontal(5),
+            button("Apply").padding(10).style(|theme: &Theme, _status| {
+                iced::widget::button::Style {
+                    background: Some(theme.palette().primary.into()),
+                    text_color: theme.palette().text,
+                    border: iced::Border::default(),
+                    shadow: iced::Shadow::default(),
+                }
+            })
+        ]
+        .spacing(10)
+        .align_x(iced::Alignment::Center)
     }
 }
 

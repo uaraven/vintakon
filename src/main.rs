@@ -4,18 +4,18 @@ use iced::{
 };
 use image::ImageFormat;
 
-use crate::{model::state::VintakonApp, resources::resources::APP_ICON};
+use crate::{resources::resources::APP_ICON, state::VintakonApp};
 
 mod exif;
 mod model;
 mod resources;
+mod state;
 
 fn main() -> iced::Result {
     let app_icon =
         icon::from_file_data(APP_ICON, Some(ImageFormat::Png)).expect("Failed to load app icon");
 
     let settings = window::Settings {
-        
         resizable: true,
         decorations: true,
         icon: Some(app_icon),
