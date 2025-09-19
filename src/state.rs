@@ -9,7 +9,10 @@ use rfd::AsyncFileDialog;
 
 use crate::{
     exif::exiftool::read_files,
-    model::{file_rec::FileRec, lens_profile::Config},
+    model::{
+        file_rec::FileRec,
+        lens_profile::{Config, LensProfile},
+    },
     resources::resources,
 };
 
@@ -22,6 +25,19 @@ pub(crate) enum Message {
     FileClicked(usize),
     ProfileChange(String),
     ApertureChange(String),
+    ShowSettings,
+    CloseSettings,
+    ProfileNameChange(usize, String),
+    ProfileMakeChange(usize, String),
+    ProfileModelChange(usize, String),
+    ProfileMinFocalChange(usize, String),
+    ProfileMaxFocalChange(usize, String),
+    ProfileMinApertureChange(usize, String),
+    ProfileMaxApertureChange(usize, String),
+    ProfileCropFactorChange(usize, String),
+    AddNewProfile,
+    DeleteProfile(usize),
+    SaveSettings,
 }
 
 #[derive(Default)]
@@ -34,6 +50,8 @@ pub(crate) struct VintakonApp {
     profile_names: Vec<String>,
     selected_profile: Option<String>,
     apply_aperture: String,
+    show_settings: bool,
+    temp_config: Option<Config>,
 }
 
 impl VintakonApp {
@@ -53,6 +71,8 @@ impl VintakonApp {
                     .collect(),
                 selected_profile: None,
                 apply_aperture: String::new(),
+                show_settings: false,
+                temp_config: None,
             },
             Task::none(),
         )
@@ -86,6 +106,112 @@ impl VintakonApp {
             }
             Message::ApertureChange(aperture) => {
                 self.apply_aperture = aperture;
+            }
+            Message::ShowSettings => {
+                self.show_settings = true;
+                self.temp_config = self.config.clone();
+            }
+            Message::CloseSettings => {
+                self.show_settings = false;
+                self.temp_config = None;
+            }
+            Message::ProfileNameChange(index, name) => {
+                if let Some(ref mut config) = self.temp_config {
+                    if let Some(profile) = config.lens_profiles.get_mut(index) {
+                        profile.name = name;
+                    }
+                }
+            }
+            Message::ProfileMakeChange(index, make) => {
+                if let Some(ref mut config) = self.temp_config {
+                    if let Some(profile) = config.lens_profiles.get_mut(index) {
+                        profile.lens_make = make;
+                    }
+                }
+            }
+            Message::ProfileModelChange(index, model) => {
+                if let Some(ref mut config) = self.temp_config {
+                    if let Some(profile) = config.lens_profiles.get_mut(index) {
+                        profile.lens_model = model;
+                    }
+                }
+            }
+            Message::ProfileMinFocalChange(index, focal) => {
+                if let Some(ref mut config) = self.temp_config {
+                    if let Some(profile) = config.lens_profiles.get_mut(index) {
+                        if let Ok(value) = focal.parse::<f32>() {
+                            profile.min_focal_length = value;
+                        }
+                    }
+                }
+            }
+            Message::ProfileMaxFocalChange(index, focal) => {
+                if let Some(ref mut config) = self.temp_config {
+                    if let Some(profile) = config.lens_profiles.get_mut(index) {
+                        if let Ok(value) = focal.parse::<f32>() {
+                            profile.max_focal_length = value;
+                        }
+                    }
+                }
+            }
+            Message::ProfileMinApertureChange(index, aperture) => {
+                if let Some(ref mut config) = self.temp_config {
+                    if let Some(profile) = config.lens_profiles.get_mut(index) {
+                        profile.min_aperture = aperture;
+                    }
+                }
+            }
+            Message::ProfileMaxApertureChange(index, aperture) => {
+                if let Some(ref mut config) = self.temp_config {
+                    if let Some(profile) = config.lens_profiles.get_mut(index) {
+                        profile.max_aperture = aperture;
+                    }
+                }
+            }
+            Message::ProfileCropFactorChange(index, factor) => {
+                if let Some(ref mut config) = self.temp_config {
+                    if let Some(profile) = config.lens_profiles.get_mut(index) {
+                        if let Ok(value) = factor.parse::<f32>() {
+                            profile.crop_factor = value;
+                        }
+                    }
+                }
+            }
+            Message::AddNewProfile => {
+                if let Some(ref mut config) = self.temp_config {
+                    config.lens_profiles.push(LensProfile {
+                        name: "New Lens".to_string(),
+                        lens_make: "".to_string(),
+                        lens_model: "".to_string(),
+                        min_focal_length: 50.0,
+                        max_focal_length: 50.0,
+                        min_aperture: "1.8".to_string(),
+                        max_aperture: "22".to_string(),
+                        crop_factor: 1.0,
+                    });
+                }
+            }
+            Message::DeleteProfile(index) => {
+                if let Some(ref mut config) = self.temp_config {
+                    if index < config.lens_profiles.len() {
+                        config.lens_profiles.remove(index);
+                    }
+                }
+            }
+            Message::SaveSettings => {
+                if let Some(temp_config) = &self.temp_config {
+                    self.config = Some(temp_config.clone());
+                    if let Some(config) = &self.config {
+                        let _ = config.save();
+                        self.profile_names = config
+                            .lens_profiles
+                            .iter()
+                            .map(|p| p.name.clone())
+                            .collect();
+                    }
+                }
+                self.show_settings = false;
+                self.temp_config = None;
             }
         }
         Task::none()
@@ -268,7 +394,7 @@ impl VintakonApp {
                     .on_press(Message::SelectFolder),
                     "Select a folder with photographs",
                     tooltip::Position::Bottom
-                ),
+                )
             ]
             .align_y(iced::Alignment::Center)
             .padding(5)
@@ -279,27 +405,31 @@ impl VintakonApp {
     }
 
     pub fn view(&self) -> Element<Message, Theme> {
-        let header = self.view_header();
-        let content = self.view_content_area();
-        let preview = self.view_image_preview();
-        let apply_pane = self.view_apply_profile();
+        if self.show_settings {
+            self.view_settings_dialog()
+        } else {
+            let header = self.view_header();
+            let content = self.view_content_area();
+            let preview = self.view_image_preview();
+            let apply_pane = self.view_apply_profile();
 
-        column![
-            header,
-            row![
-                Container::<Message, Theme>::new(content)
-                    .width(Length::FillPortion(1))
-                    .height(Length::Fill),
-                Container::<Message, Theme>::new(preview)
-                    .width(Length::FillPortion(2))
-                    .height(Length::Fill)
-                    .padding(10)
+            column![
+                header,
+                row![
+                    Container::<Message, Theme>::new(content)
+                        .width(Length::FillPortion(1))
+                        .height(Length::Fill),
+                    Container::<Message, Theme>::new(preview)
+                        .width(Length::FillPortion(2))
+                        .height(Length::Fill)
+                        .padding(10)
+                ]
+                .height(Length::Fill),
+                apply_pane,
             ]
-            .height(Length::Fill),
-            apply_pane,
-        ]
-        .height(Length::Fill)
-        .into()
+            .height(Length::Fill)
+            .into()
+        }
     }
 
     fn view_apply_profile(&self) -> iced::widget::Column<'_, Message> {
@@ -336,18 +466,154 @@ impl VintakonApp {
                         .height(24),
                 )
                 .padding(10),
-                button(
-                    image(image::Handle::from_bytes(resources::SETTINGS))
-                        .width(24)
-                        .height(24),
+                tooltip(
+                    button(
+                        image(image::Handle::from_bytes(resources::SETTINGS))
+                            .width(24)
+                            .height(24)
+                    )
+                    .on_press(Message::ShowSettings),
+                    "Settings",
+                    tooltip::Position::Bottom
                 )
-                .padding(10),
             ]
             .spacing(10),
         ]
         .spacing(10)
         .padding(10)
         .align_x(iced::Alignment::Center)
+    }
+
+    fn view_settings_dialog(&self) -> Element<Message, Theme> {
+        let temp_config = self.temp_config.as_ref().unwrap();
+
+        let mut profiles_column = column![
+            row![
+                text("Lens Profiles").size(20),
+                button("Add New Profile").on_press(Message::AddNewProfile)
+            ]
+            .spacing(10)
+            .align_y(iced::Alignment::Center),
+            Rule::horizontal(5),
+        ]
+        .spacing(10);
+
+        for (index, profile) in temp_config.lens_profiles.iter().enumerate() {
+            let profile_row = column![
+                row![
+                    text(format!("Profile {}", index + 1)).size(16),
+                    button("Delete").on_press(Message::DeleteProfile(index))
+                ]
+                .spacing(10)
+                .align_y(iced::Alignment::Center),
+                row![
+                    column![
+                        text("Name:").size(12),
+                        text_input("Profile name", &profile.name)
+                            .on_input(move |name| Message::ProfileNameChange(index, name))
+                            .width(Length::Fill),
+                    ]
+                    .spacing(5)
+                    .width(Length::FillPortion(1)),
+                    column![
+                        text("Make:").size(12),
+                        text_input("Lens make", &profile.lens_make)
+                            .on_input(move |make| Message::ProfileMakeChange(index, make))
+                            .width(Length::Fill),
+                    ]
+                    .spacing(5)
+                    .width(Length::FillPortion(1)),
+                    column![
+                        text("Model:").size(12),
+                        text_input("Lens model", &profile.lens_model)
+                            .on_input(move |model| Message::ProfileModelChange(index, model))
+                            .width(Length::Fill),
+                    ]
+                    .spacing(5)
+                    .width(Length::FillPortion(1)),
+                ]
+                .spacing(10),
+                row![
+                    column![
+                        text("Min Focal Length:").size(12),
+                        text_input("Min focal", &profile.min_focal_length.to_string())
+                            .on_input(move |focal| Message::ProfileMinFocalChange(index, focal))
+                            .width(Length::Fill),
+                    ]
+                    .spacing(5)
+                    .width(Length::FillPortion(1)),
+                    column![
+                        text("Max Focal Length:").size(12),
+                        text_input("Max focal", &profile.max_focal_length.to_string())
+                            .on_input(move |focal| Message::ProfileMaxFocalChange(index, focal))
+                            .width(Length::Fill),
+                    ]
+                    .spacing(5)
+                    .width(Length::FillPortion(1)),
+                    column![
+                        text("Min Aperture:").size(12),
+                        text_input("Min aperture", &profile.min_aperture)
+                            .on_input(move |aperture| Message::ProfileMinApertureChange(
+                                index, aperture
+                            ))
+                            .width(Length::Fill),
+                    ]
+                    .spacing(5)
+                    .width(Length::FillPortion(1)),
+                    column![
+                        text("Max Aperture:").size(12),
+                        text_input("Max aperture", &profile.max_aperture)
+                            .on_input(move |aperture| Message::ProfileMaxApertureChange(
+                                index, aperture
+                            ))
+                            .width(Length::Fill),
+                    ]
+                    .spacing(5)
+                    .width(Length::FillPortion(1)),
+                    column![
+                        text("Crop Factor:").size(12),
+                        text_input("Crop factor", &profile.crop_factor.to_string())
+                            .on_input(move |factor| Message::ProfileCropFactorChange(index, factor))
+                            .width(Length::Fill),
+                    ]
+                    .spacing(5)
+                    .width(Length::FillPortion(1)),
+                ]
+                .spacing(10),
+                Rule::horizontal(2),
+            ]
+            .spacing(10)
+            .padding(10);
+
+            profiles_column = profiles_column.push(profile_row);
+        }
+
+        let content = column![
+            profiles_column,
+            Container::new(
+                row![
+                    button("Cancel").on_press(Message::CloseSettings),
+                    button("Save").on_press(Message::SaveSettings),
+                ]
+                .spacing(10)
+            )
+            .width(Length::Fill)
+            .center_x(Length::Fill),
+        ]
+        .spacing(20)
+        .padding(20);
+
+        Container::new(scrollable(content).width(Length::Fill).height(Length::Fill))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(|theme: &Theme| {
+                use iced::Background;
+                iced::widget::container::Style {
+                    background: Some(Background::Color(theme.palette().background)),
+                    ..Default::default()
+                }
+            })
+            .into()
     }
 }
 
