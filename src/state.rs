@@ -10,6 +10,7 @@ use rfd::AsyncFileDialog;
 use crate::{
     exif::exiftool::read_files,
     model::{file_rec::FileRec, lens_profile::Config},
+    resources::resources,
 };
 
 #[derive(Debug, Clone)]
@@ -251,7 +252,12 @@ impl VintakonApp {
         column![
             row![
                 text,
-                button("Select Folder").on_press(Message::SelectFolder),
+                button(
+                    image(image::Handle::from_bytes(resources::OPEN_FOLDER))
+                        .width(24)
+                        .height(24)
+                )
+                .on_press(Message::SelectFolder),
             ]
             .align_y(iced::Alignment::Center)
             .padding(5)
@@ -313,7 +319,18 @@ impl VintakonApp {
                     .padding(5)
                     .align_y(iced::Alignment::Center),
                 ],
-                button("Apply").padding(10)
+                button(
+                    image(image::Handle::from_bytes(resources::APPLY))
+                        .width(24)
+                        .height(24),
+                )
+                .padding(10),
+                button(
+                    image(image::Handle::from_bytes(resources::SETTINGS))
+                        .width(24)
+                        .height(24),
+                )
+                .padding(10),
             ]
             .spacing(10),
         ]
