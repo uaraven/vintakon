@@ -41,6 +41,7 @@ pub(crate) enum Message {
     DeleteProfile(usize),
     SaveSettings,
     Event(Event),
+    SelectProfile(usize),
 }
 
 #[derive(Default)]
@@ -55,6 +56,8 @@ pub(crate) struct VintakonApp {
     apply_aperture: String,
     show_settings: bool,
     temp_config: Option<Config>,
+    focused_input: Option<String>,
+    selected_profile_index: Option<usize>,
 }
 
 impl VintakonApp {
@@ -76,6 +79,8 @@ impl VintakonApp {
                 apply_aperture: String::new(),
                 show_settings: false,
                 temp_config: None,
+                focused_input: None,
+                selected_profile_index: None,
             },
             Task::none(),
         )
@@ -113,10 +118,20 @@ impl VintakonApp {
             Message::ShowSettings => {
                 self.show_settings = true;
                 self.temp_config = self.config.clone();
+                self.selected_profile_index = if let Some(config) = &self.temp_config {
+                    if config.lens_profiles.is_empty() {
+                        None
+                    } else {
+                        Some(0)
+                    }
+                } else {
+                    None
+                };
             }
             Message::CloseSettings => {
                 self.show_settings = false;
                 self.temp_config = None;
+                self.selected_profile_index = None;
             }
             Message::ProfileNameChange(index, name) => {
                 if let Some(ref mut config) = self.temp_config {
@@ -192,12 +207,29 @@ impl VintakonApp {
                         max_aperture: "22".to_string(),
                         crop_factor: 1.0,
                     });
+                    self.selected_profile_index = Some(config.lens_profiles.len() - 1);
                 }
             }
             Message::DeleteProfile(index) => {
                 if let Some(ref mut config) = self.temp_config {
                     if index < config.lens_profiles.len() {
                         config.lens_profiles.remove(index);
+                        // Adjust selected index after deletion
+                        if let Some(selected) = self.selected_profile_index {
+                            if selected == index {
+                                // If deleted profile was selected, select previous or none
+                                self.selected_profile_index = if config.lens_profiles.is_empty() {
+                                    None
+                                } else if index > 0 {
+                                    Some(index - 1)
+                                } else {
+                                    Some(0)
+                                };
+                            } else if selected > index {
+                                // If selected profile was after deleted one, decrement index
+                                self.selected_profile_index = Some(selected - 1);
+                            }
+                        }
                     }
                 }
             }
@@ -215,6 +247,10 @@ impl VintakonApp {
                 }
                 self.show_settings = false;
                 self.temp_config = None;
+                self.selected_profile_index = None;
+            }
+            Message::SelectProfile(index) => {
+                self.selected_profile_index = Some(index);
             }
             Message::Event(event) => match event {
                 Event::Keyboard(keyboard::Event::KeyPressed {
@@ -488,8 +524,7 @@ impl VintakonApp {
                     image(image::Handle::from_bytes(resources::APPLY))
                         .width(24)
                         .height(24),
-                )
-                .padding(10),
+                ),
                 tooltip(
                     button(
                         image(image::Handle::from_bytes(resources::SETTINGS))
@@ -509,135 +544,280 @@ impl VintakonApp {
     }
 
     fn view_settings_dialog(&self) -> Element<Message, Theme> {
+        let _temp_config = self.temp_config.as_ref().unwrap();
+
+        let profile_list = self.view_profile_list();
+        let profile_editor = self.view_profile_editor();
+
+        let main_content = row![
+            Container::new(profile_list)
+                .width(Length::FillPortion(1))
+                .height(Length::Fill)
+                .padding(10),
+            Container::new(profile_editor)
+                .width(Length::FillPortion(2))
+                .height(Length::Fill)
+                .padding(10)
+        ]
+        .height(Length::Fill);
+
+        let bottom_buttons = Container::new(
+            row![
+                button("Cancel").on_press(Message::CloseSettings),
+                button("Ok").on_press(Message::SaveSettings),
+            ]
+            .spacing(10),
+        )
+        .width(Length::Fill)
+        .align_x(iced::alignment::Horizontal::Right)
+        .padding(20);
+
+        column![main_content, bottom_buttons,]
+            .height(Length::Fill)
+            .into()
+    }
+
+    fn create_focused_text_input<'a, F>(
+        &self,
+        placeholder: &str,
+        value: &str,
+        input_id: &str,
+        on_input: F,
+    ) -> iced::widget::TextInput<'a, Message, Theme>
+    where
+        F: Fn(String) -> Message + 'a,
+    {
+        let mut input = text_input(placeholder, value)
+            .on_input(on_input)
+            .width(Length::Fill);
+
+        if self.focused_input.as_deref() == Some(input_id) {
+            input = input.style(|theme: &Theme, status| {
+                let mut style = text_input::default(theme, status);
+                style.border.color = iced::Color::from_rgb(0.2, 0.6, 1.0);
+                style.border.width = 2.0;
+                style
+            });
+        }
+
+        input
+    }
+
+    fn view_profile_list(&self) -> Element<Message, Theme> {
         let temp_config = self.temp_config.as_ref().unwrap();
 
-        let mut profiles_column = column![
-            row![
-                text("Lens Profiles").size(20),
-                button("Add New Profile").on_press(Message::AddNewProfile)
-            ]
-            .spacing(10)
-            .align_y(iced::Alignment::Center),
-            Rule::horizontal(5),
+        let mut profile_list =
+            column![text("Lens Profiles").size(18), Rule::horizontal(2),].spacing(10);
+
+        for (index, profile) in temp_config.lens_profiles.iter().enumerate() {
+            let is_selected = self.selected_profile_index == Some(index);
+
+            let profile_button = button(text(&profile.name).size(14).width(Length::Fill))
+                .width(Length::Fill)
+                .on_press(Message::SelectProfile(index));
+
+            let profile_item = if is_selected {
+                Container::new(profile_button)
+                    .style(|theme: &Theme| {
+                        use iced::Background;
+                        iced::widget::container::Style {
+                            background: Some(Background::Color(theme.palette().primary)),
+                            border: iced::Border {
+                                radius: 4.0.into(),
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        }
+                    })
+                    .padding(2)
+            } else {
+                Container::new(profile_button).padding(2)
+            };
+
+            profile_list = profile_list.push(profile_item);
+        }
+
+        let buttons = row![
+            button(
+                image(image::Handle::from_bytes(resources::ADD))
+                    .width(24)
+                    .height(24),
+            )
+            .on_press(Message::AddNewProfile),
+            if let Some(selected) = self.selected_profile_index {
+                button(
+                    image(image::Handle::from_bytes(resources::DELETE))
+                        .width(24)
+                        .height(24),
+                )
+                .on_press(Message::DeleteProfile(selected))
+            } else {
+                button(
+                    image(image::Handle::from_bytes(resources::DELETE))
+                        .width(24)
+                        .height(24),
+                ) // Disabled when no selection
+            }
         ]
         .spacing(10);
 
-        for (index, profile) in temp_config.lens_profiles.iter().enumerate() {
-            let profile_row = column![
-                row![
-                    text(format!("Profile {}", index + 1)).size(16),
-                    button("Delete").on_press(Message::DeleteProfile(index))
-                ]
-                .spacing(10)
-                .align_y(iced::Alignment::Center),
-                row![
-                    column![
-                        text("Name:").size(12),
-                        text_input("Profile name", &profile.name)
-                            .on_input(move |name| Message::ProfileNameChange(index, name))
-                            .width(Length::Fill),
-                    ]
-                    .spacing(5)
-                    .width(Length::FillPortion(1)),
-                    column![
-                        text("Make:").size(12),
-                        text_input("Lens make", &profile.lens_make)
-                            .on_input(move |make| Message::ProfileMakeChange(index, make))
-                            .width(Length::Fill),
-                    ]
-                    .spacing(5)
-                    .width(Length::FillPortion(1)),
-                    column![
-                        text("Model:").size(12),
-                        text_input("Lens model", &profile.lens_model)
-                            .on_input(move |model| Message::ProfileModelChange(index, model))
-                            .width(Length::Fill),
-                    ]
-                    .spacing(5)
-                    .width(Length::FillPortion(1)),
-                ]
-                .spacing(10),
-                row![
-                    column![
-                        text("Min Focal Length:").size(12),
-                        text_input("Min focal", &profile.min_focal_length.to_string())
-                            .on_input(move |focal| Message::ProfileMinFocalChange(index, focal))
-                            .width(Length::Fill),
-                    ]
-                    .spacing(5)
-                    .width(Length::FillPortion(1)),
-                    column![
-                        text("Max Focal Length:").size(12),
-                        text_input("Max focal", &profile.max_focal_length.to_string())
-                            .on_input(move |focal| Message::ProfileMaxFocalChange(index, focal))
-                            .width(Length::Fill),
-                    ]
-                    .spacing(5)
-                    .width(Length::FillPortion(1)),
-                    column![
-                        text("Min Aperture:").size(12),
-                        text_input("Min aperture", &profile.min_aperture)
-                            .on_input(move |aperture| Message::ProfileMinApertureChange(
-                                index, aperture
-                            ))
-                            .width(Length::Fill),
-                    ]
-                    .spacing(5)
-                    .width(Length::FillPortion(1)),
-                    column![
-                        text("Max Aperture:").size(12),
-                        text_input("Max aperture", &profile.max_aperture)
-                            .on_input(move |aperture| Message::ProfileMaxApertureChange(
-                                index, aperture
-                            ))
-                            .width(Length::Fill),
-                    ]
-                    .spacing(5)
-                    .width(Length::FillPortion(1)),
-                    column![
-                        text("Crop Factor:").size(12),
-                        text_input("Crop factor", &profile.crop_factor.to_string())
-                            .on_input(move |factor| Message::ProfileCropFactorChange(index, factor))
-                            .width(Length::Fill),
-                    ]
-                    .spacing(5)
-                    .width(Length::FillPortion(1)),
-                ]
-                .spacing(10),
-                Rule::horizontal(2),
-            ]
+        column![scrollable(profile_list).height(Length::Fill), buttons,]
             .spacing(10)
-            .padding(10);
+            .height(Length::Fill)
+            .into()
+    }
 
-            profiles_column = profiles_column.push(profile_row);
-        }
+    fn view_profile_editor(&self) -> Element<Message, Theme> {
+        let temp_config = self.temp_config.as_ref().unwrap();
 
-        let content = column![
-            profiles_column,
-            Container::new(
-                row![
-                    button("Cancel").on_press(Message::CloseSettings),
-                    button("Save").on_press(Message::SaveSettings),
+        if let Some(selected_index) = self.selected_profile_index {
+            if let Some(profile) = temp_config.lens_profiles.get(selected_index) {
+                let content = column![
+                    text("Profile Editor").size(18),
+                    Rule::horizontal(2),
+                    row![
+                        column![
+                            text("Name:").size(12),
+                            self.create_focused_text_input(
+                                "Profile name",
+                                &profile.name,
+                                &format!("profile_{}_name", selected_index),
+                                move |name| Message::ProfileNameChange(selected_index, name)
+                            ),
+                        ]
+                        .spacing(5)
+                        .width(Length::FillPortion(1)),
+                        column![
+                            text("Make:").size(12),
+                            self.create_focused_text_input(
+                                "Lens make",
+                                &profile.lens_make,
+                                &format!("profile_{}_make", selected_index),
+                                move |make| Message::ProfileMakeChange(selected_index, make)
+                            ),
+                        ]
+                        .spacing(5)
+                        .width(Length::FillPortion(1)),
+                    ]
+                    .spacing(10),
+                    row![
+                        column![
+                            text("Model:").size(12),
+                            self.create_focused_text_input(
+                                "Lens model",
+                                &profile.lens_model,
+                                &format!("profile_{}_model", selected_index),
+                                move |model| Message::ProfileModelChange(selected_index, model)
+                            ),
+                        ]
+                        .spacing(5)
+                        .width(Length::Fill),
+                    ]
+                    .spacing(10),
+                    row![
+                        column![
+                            text("Min Focal Length:").size(12),
+                            self.create_focused_text_input(
+                                "Min focal",
+                                &profile.min_focal_length.to_string(),
+                                &format!("profile_{}_min_focal", selected_index),
+                                move |focal| Message::ProfileMinFocalChange(selected_index, focal)
+                            ),
+                        ]
+                        .spacing(5)
+                        .width(Length::FillPortion(1)),
+                        column![
+                            text("Max Focal Length:").size(12),
+                            self.create_focused_text_input(
+                                "Max focal",
+                                &profile.max_focal_length.to_string(),
+                                &format!("profile_{}_max_focal", selected_index),
+                                move |focal| Message::ProfileMaxFocalChange(selected_index, focal)
+                            ),
+                        ]
+                        .spacing(5)
+                        .width(Length::FillPortion(1)),
+                    ]
+                    .spacing(10),
+                    row![
+                        column![
+                            text("Min Aperture:").size(12),
+                            self.create_focused_text_input(
+                                "Min aperture",
+                                &profile.min_aperture,
+                                &format!("profile_{}_min_aperture", selected_index),
+                                move |aperture| Message::ProfileMinApertureChange(
+                                    selected_index,
+                                    aperture
+                                )
+                            ),
+                        ]
+                        .spacing(5)
+                        .width(Length::FillPortion(1)),
+                        column![
+                            text("Max Aperture:").size(12),
+                            self.create_focused_text_input(
+                                "Max aperture",
+                                &profile.max_aperture,
+                                &format!("profile_{}_max_aperture", selected_index),
+                                move |aperture| Message::ProfileMaxApertureChange(
+                                    selected_index,
+                                    aperture
+                                )
+                            ),
+                        ]
+                        .spacing(5)
+                        .width(Length::FillPortion(1)),
+                    ]
+                    .spacing(10),
+                    row![
+                        column![
+                            text("Crop Factor:").size(12),
+                            self.create_focused_text_input(
+                                "Crop factor",
+                                &profile.crop_factor.to_string(),
+                                &format!("profile_{}_crop_factor", selected_index),
+                                move |factor| Message::ProfileCropFactorChange(
+                                    selected_index,
+                                    factor
+                                )
+                            ),
+                        ]
+                        .spacing(5)
+                        .width(Length::FillPortion(1)),
+                    ]
+                    .spacing(10),
                 ]
-                .spacing(10)
+                .spacing(15)
+                .padding(10);
+
+                scrollable(content).height(Length::Fill).into()
+            } else {
+                Container::new(
+                    text("Invalid profile selection")
+                        .size(16)
+                        .align_x(iced::Alignment::Center)
+                        .align_y(iced::Alignment::Center),
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .into()
+            }
+        } else {
+            Container::new(
+                text("Select a profile to edit")
+                    .size(16)
+                    .align_x(iced::Alignment::Center)
+                    .align_y(iced::Alignment::Center),
             )
             .width(Length::Fill)
-            .center_x(Length::Fill),
-        ]
-        .spacing(20)
-        .padding(20);
-
-        Container::new(scrollable(content).width(Length::Fill).height(Length::Fill))
-            .width(Length::Fill)
             .height(Length::Fill)
-            .style(|theme: &Theme| {
-                use iced::Background;
-                iced::widget::container::Style {
-                    background: Some(Background::Color(theme.palette().background)),
-                    ..Default::default()
-                }
-            })
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
             .into()
+        }
     }
 
     pub fn subscription(&self) -> iced::Subscription<Message> {
