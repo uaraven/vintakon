@@ -36,13 +36,12 @@ structformat=jsonq
 User can define lens profiles that can be applied to files
 Lens profile contains following information:
 
- - lens make
- - lens model;
- - use aperture;
- - lens focal length;
- - lens focal length in 35mm equivalent
- - lensInfo (f/min - f/max focalLengthMin - focalLengthMax);
-
+- lens make
+- lens model;
+- use aperture;
+- lens focal length;
+- lens focal length in 35mm equivalent
+- lensInfo (f/min - f/max focalLengthMin - focalLengthMax);
 
 ## Testing
 
@@ -60,7 +59,10 @@ UI is built using iced library.
 
 ## Development Commands
 
+Always make sure to compile the project after making changes. Project must compile.
+
 ### Building and Running
+
 ```shell
 # Build the project
 cargo build
@@ -73,6 +75,7 @@ cargo build --release
 ```
 
 ### Testing
+
 ```shell
 # Run all tests
 cargo test
@@ -85,6 +88,7 @@ cargo test test_parsing_prime
 ```
 
 ### Code Quality
+
 ```shell
 # Format code
 cargo fmt
@@ -120,6 +124,7 @@ cargo clippy
 ### EXIF Processing
 
 The application uses `exiftool` with specific parameters to extract comprehensive metadata. Key features:
+
 - Supports 20+ image formats including RAW files (ARW, NEF, RAF, etc.)
 - Extracts lens information and categorizes as Prime or Zoom lenses
 - Decodes embedded preview images from base64 data

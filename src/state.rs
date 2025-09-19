@@ -2,7 +2,7 @@ use iced::{
     Element, Length, Task, Theme,
     widget::{
         Container, Rule, button, checkbox, column, image, pick_list, row, scrollable, text,
-        text_input,
+        text_input, tooltip,
     },
 };
 use rfd::AsyncFileDialog;
@@ -115,7 +115,7 @@ impl VintakonApp {
 
         let is_selected_file = self.selected_file_index == Some(original_index);
 
-        let file_row = row![
+        let mut file_row = row![
             checkbox("", file_rec.is_selected()).on_toggle(move |selected| {
                 Message::FileSelectionToggled(original_index, selected)
             }),
@@ -127,6 +127,13 @@ impl VintakonApp {
             .width(Length::Fill)
         ]
         .spacing(10);
+        if !file_rec.has_lens_data() {
+            file_row = file_row.push(
+                image(image::Handle::from_bytes(resources::BAD_LENS))
+                    .width(24)
+                    .height(24),
+            );
+        }
 
         if is_selected_file {
             Container::new(file_row)
@@ -252,12 +259,16 @@ impl VintakonApp {
         column![
             row![
                 text,
-                button(
-                    image(image::Handle::from_bytes(resources::OPEN_FOLDER))
-                        .width(24)
-                        .height(24)
-                )
-                .on_press(Message::SelectFolder),
+                tooltip(
+                    button(
+                        image(image::Handle::from_bytes(resources::OPEN_FOLDER))
+                            .width(24)
+                            .height(24)
+                    )
+                    .on_press(Message::SelectFolder),
+                    "Select a folder with photographs",
+                    tooltip::Position::Bottom
+                ),
             ]
             .align_y(iced::Alignment::Center)
             .padding(5)
@@ -280,7 +291,7 @@ impl VintakonApp {
                     .width(Length::FillPortion(1))
                     .height(Length::Fill),
                 Container::<Message, Theme>::new(preview)
-                    .width(Length::FillPortion(1))
+                    .width(Length::FillPortion(2))
                     .height(Length::Fill)
                     .padding(10)
             ]
