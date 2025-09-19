@@ -23,6 +23,7 @@ fn main() -> iced::Result {
     };
 
     iced::application("Vintakon", VintakonApp::update, VintakonApp::view)
+        .subscription(VintakonApp::subscription)
         .window(settings)
         .settings(Settings::default())
         .run_with(VintakonApp::new)

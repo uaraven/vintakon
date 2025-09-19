@@ -639,6 +639,10 @@ impl VintakonApp {
             })
             .into()
     }
+
+    pub fn subscription(&self) -> iced::Subscription<Message> {
+        iced::event::listen().map(Message::Event)
+    }
 }
 
 fn view_metadata(exif_info: &crate::exif::exif::ExifInfo) -> iced::widget::Column<'_, Message> {
