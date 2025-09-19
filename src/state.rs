@@ -1,7 +1,9 @@
 use iced::{
     Element, Length, Task, Theme,
+    event::{self, Event},
+    keyboard::{self, key},
     widget::{
-        Container, Rule, button, checkbox, column, image, pick_list, row, scrollable, text,
+        self, Container, Rule, button, checkbox, column, image, pick_list, row, scrollable, text,
         text_input, tooltip,
     },
 };
@@ -38,6 +40,7 @@ pub(crate) enum Message {
     AddNewProfile,
     DeleteProfile(usize),
     SaveSettings,
+    Event(Event),
 }
 
 #[derive(Default)]
@@ -213,6 +216,27 @@ impl VintakonApp {
                 self.show_settings = false;
                 self.temp_config = None;
             }
+            Message::Event(event) => match event {
+                Event::Keyboard(keyboard::Event::KeyPressed {
+                    key: keyboard::Key::Named(key::Named::Tab),
+                    modifiers,
+                    ..
+                }) => {
+                    if modifiers.shift() {
+                        return widget::focus_previous();
+                    } else {
+                        return widget::focus_next();
+                    }
+                }
+                // Event::Keyboard(keyboard::Event::KeyPressed {
+                //     key: keyboard::Key::Named(key::Named::Escape),
+                //     ..
+                // }) => {
+                //     self.show_settings = false;
+                //     self.temp_config = None;
+                // }
+                _ => {}
+            },
         }
         Task::none()
     }
