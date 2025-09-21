@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use chrono::DateTime;
 
-use crate::exif::tags::{self, LENS_MAKE};
+use crate::{exif::tags, model::lens_profile::LensProfile};
 
 #[derive(Debug, Clone)]
 pub(crate) enum LensInfo {
@@ -45,7 +45,25 @@ impl LensInfo {
         }
     }
 
-    fn to_exif_string(&self) -> String {
+    fn from_profile(profile: &LensProfile) -> Self {
+        if profile.min_focal_length == profile.max_focal_length
+            && profile.min_aperture == profile.max_aperture
+        {
+            Self::Prime {
+                focal_length: format!("{:.1}", profile.min_focal_length),
+                min_f: format!("{:.1}", profile.min_aperture),
+            }
+        } else {
+            Self::Zoom {
+                min_focal_length: format!("{:.1}", profile.min_focal_length),
+                max_focal_length: format!("{:.1}", profile.max_focal_length),
+                min_f: format!("{:.1}", profile.min_aperture),
+                max_f: format!("{:.1}", profile.max_aperture),
+            }
+        }
+    }
+
+    pub fn to_exif_string(&self) -> String {
         match self {
             Self::Zoom {
                 min_focal_length,
@@ -123,6 +141,40 @@ pub(crate) struct ExifChanges {
 }
 
 impl ExifChanges {
+    pub fn new(
+        lens_profile: LensProfile,
+        actual_focal_length: Option<f32>,
+        actual_aperture: Option<String>,
+    ) -> Self {
+        let make = Some(lens_profile.lens_make.clone());
+        let model = Some(lens_profile.lens_model.clone());
+        let aperture = actual_aperture.clone();
+        // fl will contain the focal length and its equivalent in 35mm format
+        let fl = if let Some(actual_fl) = actual_focal_length {
+            Some((actual_fl, actual_fl * lens_profile.crop_factor))
+        } else if lens_profile.min_focal_length == lens_profile.max_focal_length {
+            Some((
+                lens_profile.min_focal_length,
+                lens_profile.min_focal_length * lens_profile.crop_factor,
+            ))
+        } else {
+            None
+        };
+
+        let focal_length = fl.map(|f| format!("{:.1}", f.0));
+        let focal_length_35mm = fl.map(|f| format!("{:.1}", f.1));
+        let lens_info = LensInfo::from_profile(&lens_profile);
+
+        Self {
+            make,
+            model,
+            aperture,
+            focal_length,
+            focal_length_35mm,
+            lens_info: Some(lens_info),
+        }
+    }
+
     pub fn to_exif_tool(&self) -> Vec<String> {
         let mut args = vec![];
         if let Some(make) = &self.make {
