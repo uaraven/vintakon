@@ -1,5 +1,5 @@
 use iced::{
-    Settings,
+    Settings, Theme,
     window::{self, icon},
 };
 use image::ImageFormat;
@@ -24,6 +24,7 @@ fn main() -> iced::Result {
 
     iced::application("Vintakon", VintakonApp::update, VintakonApp::view)
         .subscription(VintakonApp::subscription)
+        .theme(|_| Theme::Dark)
         .window(settings)
         .settings(Settings::default())
         .run_with(VintakonApp::new)
