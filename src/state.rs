@@ -1,6 +1,6 @@
 use iced::{
     Element, Length, Task, Theme,
-    event::{self, Event},
+    event::Event,
     keyboard::{self, key},
     widget::{
         self, Container, Rule, button, checkbox, column, image, pick_list, row, scrollable, text,
@@ -48,6 +48,7 @@ pub(crate) enum Message {
 pub(crate) struct VintakonApp {
     path: Option<String>,
     images: Vec<FileRec>,
+    is_applying: bool,
     is_loading: bool,
     selected_file_index: Option<usize>,
     config: Option<Config>,
@@ -67,6 +68,7 @@ impl VintakonApp {
             Self {
                 path: None,
                 images: Vec::new(),
+                is_applying: false,
                 is_loading: false,
                 selected_file_index: None,
                 config: Some(config.clone()),
@@ -444,7 +446,19 @@ impl VintakonApp {
     }
 
     fn view_content_pane(&self) -> iced::widget::Row<'_, Message> {
-        if self.is_loading {
+        if self.is_applying {
+            row![
+                Container::<Message, Theme>::new(
+                    column![text("Applying lens profile...").size(16)]
+                        .spacing(10)
+                        .align_x(iced::Alignment::Center),
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+            ]
+        } else if self.is_loading {
             row![
                 Container::<Message, Theme>::new(
                     column![text("Scanning folder...").size(16)]

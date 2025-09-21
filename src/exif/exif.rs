@@ -2,6 +2,8 @@ use std::fmt::Display;
 
 use chrono::DateTime;
 
+use crate::exif::tags::{self, LENS_MAKE};
+
 #[derive(Debug, Clone)]
 pub(crate) enum LensInfo {
     Zoom {
@@ -40,6 +42,24 @@ impl LensInfo {
             })
         } else {
             None
+        }
+    }
+
+    fn to_exif_string(&self) -> String {
+        match self {
+            Self::Zoom {
+                min_focal_length,
+                max_focal_length,
+                min_f,
+                max_f,
+            } => format!(
+                "{} {} {} {}",
+                min_focal_length, max_focal_length, min_f, max_f
+            ),
+            Self::Prime {
+                focal_length,
+                min_f,
+            } => format!("{} {} {} {}", focal_length, focal_length, min_f, min_f),
         }
     }
 }
@@ -90,4 +110,48 @@ pub(crate) struct ExifInfo {
     pub focal_length: Option<String>,
     pub focal_length_35mm: Option<String>,
     pub preview_image: Option<image::DynamicImage>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ExifChanges {
+    pub make: Option<String>,
+    pub model: Option<String>,
+    pub aperture: Option<String>,
+    pub focal_length: Option<String>,
+    pub focal_length_35mm: Option<String>,
+    pub lens_info: Option<LensInfo>,
+}
+
+impl ExifChanges {
+    pub fn to_exif_tool(&self) -> Vec<String> {
+        let mut args = vec![];
+        if let Some(make) = &self.make {
+            args.push(format!("--{}={}", tags::LENS_MAKE, make));
+        }
+        if let Some(model) = &self.model {
+            args.push(format!("--{}={}", tags::LENS_MODEL, model));
+        }
+        if let Some(aperture) = &self.aperture {
+            args.push(format!("--{}={}", tags::APERTURE, aperture));
+            args.push(format!("--{}={}", tags::F_NUMBER, aperture));
+        }
+        if let Some(focal_length) = &self.focal_length {
+            args.push(format!("--{}={}", tags::FOCAL_LENGTH, focal_length));
+        }
+        if let Some(focal_length_35mm) = &self.focal_length_35mm {
+            args.push(format!(
+                "--{}={}",
+                tags::FOCAL_LENGTH_35MM,
+                focal_length_35mm
+            ));
+        }
+        if let Some(lens_info) = &self.lens_info {
+            args.push(format!(
+                "--{}={}",
+                tags::LENS_INFO,
+                lens_info.to_exif_string()
+            ));
+        }
+        args
+    }
 }

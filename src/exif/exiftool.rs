@@ -1,4 +1,4 @@
-use crate::exif::exif::{ExifInfo, LensInfo};
+use crate::exif::exif::{ExifChanges, ExifInfo, LensInfo};
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
 use image::io::Reader as ImageReader;
@@ -187,6 +187,30 @@ fn parse_exif_entry(entry: &Value) -> Option<ExifInfo> {
     })
 }
 
+pub fn apply_profile(
+    exiftool_program: Option<String>,
+    file_names: Vec<String>,
+    changes: Vec<ExifChanges>,
+) {
+    let exif_tool_program = exiftool_program.unwrap_or_else(|| "exiftool".to_string());
+
+    let mut cmd = Command::new(exif_tool_program);
+    cmd.arg("-q");
+    for change in changes {
+        cmd.args(change.to_exif_tool());
+    }
+    for file_name in file_names {
+        cmd.arg(file_name);
+    }
+
+    match cmd.output() {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("Failed to run exiftool: {}", e);
+        }
+    };
+}
+
 #[cfg(test)]
 mod exiftool_test {
     use crate::exif::{exif::LensInfo, exiftool::parse_exif_entry};
@@ -274,18 +298,21 @@ mod exiftool_test {
     #[test]
     fn test_read_files() {
         use super::read_files;
-        
+
         let exif_infos = read_files("test-data/img");
-        
+
         assert!(!exif_infos.is_empty(), "Should read at least one file");
-        assert!(exif_infos.len() <= 2, "Should not read more than 2 test files");
-        
+        assert!(
+            exif_infos.len() <= 2,
+            "Should not read more than 2 test files"
+        );
+
         for exif_info in &exif_infos {
             assert!(exif_info.file_path.contains("test-data/img"));
             assert!(
-                exif_info.file_path.ends_with(".jpg") || 
-                exif_info.file_path.ends_with(".ARW") ||
-                exif_info.file_path.ends_with(".arw")
+                exif_info.file_path.ends_with(".jpg")
+                    || exif_info.file_path.ends_with(".ARW")
+                    || exif_info.file_path.ends_with(".arw")
             );
         }
     }
