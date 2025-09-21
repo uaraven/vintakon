@@ -264,13 +264,6 @@ impl VintakonApp {
                         return widget::focus_next();
                     }
                 }
-                // Event::Keyboard(keyboard::Event::KeyPressed {
-                //     key: keyboard::Key::Named(key::Named::Escape),
-                //     ..
-                // }) => {
-                //     self.show_settings = false;
-                //     self.temp_config = None;
-                // }
                 _ => {}
             },
         }
@@ -402,40 +395,12 @@ impl VintakonApp {
         }
     }
 
-    fn view_content_area(&self) -> Element<Message, Theme> {
-        if self.is_loading {
-            Container::<Message, Theme>::new(
-                column![text("Loading images...").size(16)]
-                    .spacing(10)
-                    .align_x(iced::Alignment::Center),
-            )
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-            .into()
-        } else if self.images.is_empty() {
-            Container::<Message, Theme>::new(
-                text("No images loaded. Select a folder to get started.")
-                    .align_x(iced::Alignment::Center)
-                    .align_y(iced::Alignment::Center),
-            )
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-            .into()
-        } else {
-            self.view_file_list()
-        }
-    }
-
     fn view_header(&self) -> Element<Message, Theme> {
         let mut text = text(format!(
             "{}",
             self.path
                 .as_deref()
-                .unwrap_or("<Select a folder with images>")
+                .unwrap_or("<Select a folder with photographs>")
         ))
         .size(16)
         .width(Length::Fill);
@@ -469,26 +434,51 @@ impl VintakonApp {
             self.view_settings_dialog()
         } else {
             let header = self.view_header();
-            let content = self.view_content_area();
-            let preview = self.view_image_preview();
+            let content_pane = self.view_content_pane();
             let apply_pane = self.view_apply_profile();
 
-            column![
-                header,
-                row![
-                    Container::<Message, Theme>::new(content)
-                        .width(Length::FillPortion(1))
-                        .height(Length::Fill),
-                    Container::<Message, Theme>::new(preview)
-                        .width(Length::FillPortion(2))
-                        .height(Length::Fill)
-                        .padding(10)
-                ]
-                .height(Length::Fill),
-                apply_pane,
+            column![header, content_pane, apply_pane,]
+                .height(Length::Fill)
+                .into()
+        }
+    }
+
+    fn view_content_pane(&self) -> iced::widget::Row<'_, Message> {
+        if self.is_loading {
+            row![
+                Container::<Message, Theme>::new(
+                    column![text("Scanning folder...").size(16)]
+                        .spacing(10)
+                        .align_x(iced::Alignment::Center),
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+            ]
+        } else if self.images.is_empty() {
+            row![
+                Container::<Message, Theme>::new(
+                    text("No images loaded. Select a folder to get started.")
+                        .align_x(iced::Alignment::Center)
+                        .align_y(iced::Alignment::Center),
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+            ]
+        } else {
+            row![
+                Container::<Message, Theme>::new(self.view_file_list())
+                    .width(Length::FillPortion(1))
+                    .height(Length::Fill),
+                Container::<Message, Theme>::new(self.view_image_preview())
+                    .width(Length::FillPortion(2))
+                    .height(Length::Fill)
+                    .padding(10)
             ]
             .height(Length::Fill)
-            .into()
         }
     }
 
