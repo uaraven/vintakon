@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use iced::{
     Element, Length, Task, Theme,
     event::Event,
@@ -7,6 +9,7 @@ use iced::{
         text_input, tooltip,
     },
 };
+use regex::bytes::Regex;
 use rfd::AsyncFileDialog;
 
 use crate::{
@@ -27,6 +30,7 @@ pub(crate) enum Message {
     FileClicked(usize),
     ProfileChange(String),
     ApertureChange(String),
+    FocalLengthChange(String),
     ShowSettings,
     CloseSettings,
     ProfileNameChange(usize, String),
@@ -42,6 +46,7 @@ pub(crate) enum Message {
     SaveSettings,
     Event(Event),
     SelectProfile(usize),
+    ApplyProfile,
 }
 
 #[derive(Default)]
@@ -55,6 +60,7 @@ pub(crate) struct VintakonApp {
     profile_names: Vec<String>,
     selected_profile: Option<String>,
     apply_aperture: String,
+    apply_focal_length: String,
     show_settings: bool,
     temp_config: Option<Config>,
     focused_input: Option<String>,
@@ -79,6 +85,7 @@ impl VintakonApp {
                     .collect(),
                 selected_profile: None,
                 apply_aperture: String::new(),
+                apply_focal_length: String::new(),
                 show_settings: false,
                 temp_config: None,
                 focused_input: None,
@@ -115,7 +122,14 @@ impl VintakonApp {
                 self.selected_profile = Some(profile);
             }
             Message::ApertureChange(aperture) => {
-                self.apply_aperture = aperture;
+                if is_aperture_valid(&aperture) {
+                    self.apply_aperture = aperture;
+                }
+            }
+            Message::FocalLengthChange(focal_length) => {
+                if is_focal_length_valid(&focal_length) {
+                    self.apply_focal_length = focal_length;
+                }
             }
             Message::ShowSettings => {
                 self.show_settings = true;
@@ -254,6 +268,7 @@ impl VintakonApp {
             Message::SelectProfile(index) => {
                 self.selected_profile_index = Some(index);
             }
+            Message::ApplyProfile => {}
             Message::Event(event) => match event {
                 Event::Keyboard(keyboard::Event::KeyPressed {
                     key: keyboard::Key::Named(key::Named::Tab),
@@ -515,9 +530,18 @@ impl VintakonApp {
                     .padding(5)
                     .align_y(iced::Alignment::Center),
                     row![
-                        text("Aperture: ").size(14),
+                        text("Actual Aperture: ").size(14),
                         text_input("Aperture", &self.apply_aperture)
                             .on_input(Message::ApertureChange)
+                            .width(Length::Fill),
+                    ]
+                    .spacing(10)
+                    .padding(5)
+                    .align_y(iced::Alignment::Center),
+                    row![
+                        text("Actual Focal Length: ").size(14),
+                        text_input("Focal Length", &self.apply_focal_length)
+                            .on_input(Message::FocalLengthChange)
                             .width(Length::Fill),
                     ]
                     .spacing(10)
@@ -528,7 +552,12 @@ impl VintakonApp {
                     image(image::Handle::from_bytes(resources::APPLY))
                         .width(24)
                         .height(24),
-                ),
+                )
+                .on_press_maybe(if self.is_conditions_for_apply_met() {
+                    Some(Message::ApplyProfile)
+                } else {
+                    None
+                }),
                 tooltip(
                     button(
                         image(image::Handle::from_bytes(resources::SETTINGS))
@@ -827,6 +856,14 @@ impl VintakonApp {
     pub fn subscription(&self) -> iced::Subscription<Message> {
         iced::event::listen().map(Message::Event)
     }
+
+    fn is_any_file_checked(&self) -> bool {
+        self.images.iter().any(|img| img.is_selected())
+    }
+
+    fn is_conditions_for_apply_met(&self) -> bool {
+        self.selected_profile.is_some() && self.is_any_file_checked()
+    }
 }
 
 fn view_metadata(exif_info: &crate::exif::exif::ExifInfo) -> iced::widget::Column<'_, Message> {
@@ -875,4 +912,19 @@ async fn select_folder() -> String {
     } else {
         String::new()
     }
+}
+
+const APERTURE_VALIDATOR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(\d+\.?\d*)?$").unwrap());
+const FL_VALIDATOR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d*$").unwrap());
+
+/// Checks if focal length or aperture is matching
+/// following regular expression:
+/// /\d+(\.\d+)?/
+fn is_aperture_valid(text: &String) -> bool {
+    APERTURE_VALIDATOR.is_match(text.as_bytes())
+}
+
+fn is_focal_length_valid(text: &String) -> bool {
+    FL_VALIDATOR.is_match(text.as_bytes())
 }
