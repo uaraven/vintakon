@@ -142,7 +142,7 @@ pub(crate) struct ExifChanges {
 
 impl ExifChanges {
     pub fn new(
-        lens_profile: LensProfile,
+        lens_profile: &LensProfile,
         actual_focal_length: Option<f32>,
         actual_aperture: Option<String>,
     ) -> Self {
@@ -177,29 +177,36 @@ impl ExifChanges {
 
     pub fn to_exif_tool(&self) -> Vec<String> {
         let mut args = vec![];
+        let mut lens = String::new();
         if let Some(make) = &self.make {
-            args.push(format!("--{}={}", tags::LENS_MAKE, make));
+            args.push(format!("-{}={}", tags::LENS_MAKE, make));
+            lens.push_str(make.as_str());
+            lens.push_str(" ");
         }
         if let Some(model) = &self.model {
-            args.push(format!("--{}={}", tags::LENS_MODEL, model));
+            args.push(format!("-{}={}", tags::LENS_MODEL, model));
+            lens.push_str(model.as_str());
+        }
+        if !lens.is_empty() {
+            args.push(format!("-{}={}", tags::LENS, lens));
         }
         if let Some(aperture) = &self.aperture {
-            args.push(format!("--{}={}", tags::APERTURE, aperture));
-            args.push(format!("--{}={}", tags::F_NUMBER, aperture));
+            args.push(format!("-{}={}", tags::APERTURE, aperture));
+            args.push(format!("-{}={}", tags::F_NUMBER, aperture));
         }
         if let Some(focal_length) = &self.focal_length {
-            args.push(format!("--{}={}", tags::FOCAL_LENGTH, focal_length));
+            args.push(format!("-{}={}", tags::FOCAL_LENGTH, focal_length));
         }
         if let Some(focal_length_35mm) = &self.focal_length_35mm {
             args.push(format!(
-                "--{}={}",
+                "-{}={}",
                 tags::FOCAL_LENGTH_35MM,
                 focal_length_35mm
             ));
         }
         if let Some(lens_info) = &self.lens_info {
             args.push(format!(
-                "--{}={}",
+                "-{}={}",
                 tags::LENS_INFO,
                 lens_info.to_exif_string()
             ));

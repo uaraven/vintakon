@@ -13,7 +13,10 @@ use regex::bytes::Regex;
 use rfd::AsyncFileDialog;
 
 use crate::{
-    exif::exiftool::read_files,
+    exif::{
+        exif::ExifChanges,
+        exiftool::{apply_profile, read_files},
+    },
     model::{
         file_rec::FileRec,
         lens_profile::{Config, LensProfile},
@@ -47,6 +50,7 @@ pub(crate) enum Message {
     Event(Event),
     SelectProfile(usize),
     ApplyProfile,
+    ProfileApplied(bool),
 }
 
 #[derive(Default)]
@@ -268,7 +272,37 @@ impl VintakonApp {
             Message::SelectProfile(index) => {
                 self.selected_profile_index = Some(index);
             }
-            Message::ApplyProfile => {}
+            Message::ApplyProfile => {
+                self.is_applying = true;
+                let working_dir = self.path.clone().unwrap();
+                let selected_profile_name = self.selected_profile.clone().unwrap();
+                let profile = self
+                    .find_profile_by_name(selected_profile_name.as_str())
+                    .unwrap();
+                let selected = self
+                    .images
+                    .iter()
+                    .filter_map(|img| match img.is_selected() {
+                        true => Some(img.clone()),
+                        false => None,
+                    })
+                    .collect();
+
+                return Task::perform(
+                    apply_profile_to_images(
+                        working_dir,
+                        profile,
+                        self.apply_aperture.clone(),
+                        self.apply_focal_length.clone(),
+                        selected,
+                    ),
+                    Message::ProfileApplied,
+                );
+            }
+            Message::ProfileApplied(_) => {
+                self.is_applying = false;
+                return Task::perform(load_images(self.path.clone().unwrap()), Message::LoadImages);
+            }
             Message::Event(event) => match event {
                 Event::Keyboard(keyboard::Event::KeyPressed {
                     key: keyboard::Key::Named(key::Named::Tab),
@@ -548,16 +582,20 @@ impl VintakonApp {
                     .padding(5)
                     .align_y(iced::Alignment::Center),
                 ],
-                button(
-                    image(image::Handle::from_bytes(resources::APPLY))
-                        .width(24)
-                        .height(24),
-                )
-                .on_press_maybe(if self.is_conditions_for_apply_met() {
-                    Some(Message::ApplyProfile)
-                } else {
-                    None
-                }),
+                tooltip(
+                    button(
+                        image(image::Handle::from_bytes(resources::APPLY))
+                            .width(24)
+                            .height(24),
+                    )
+                    .on_press_maybe(if self.can_apply_profile() {
+                        Some(Message::ApplyProfile)
+                    } else {
+                        None
+                    }),
+                    "Apply profile to selected images",
+                    tooltip::Position::Bottom
+                ),
                 tooltip(
                     button(
                         image(image::Handle::from_bytes(resources::SETTINGS))
@@ -861,8 +899,19 @@ impl VintakonApp {
         self.images.iter().any(|img| img.is_selected())
     }
 
-    fn is_conditions_for_apply_met(&self) -> bool {
+    fn can_apply_profile(&self) -> bool {
         self.selected_profile.is_some() && self.is_any_file_checked()
+    }
+
+    fn find_profile_by_name(&self, name: &str) -> Option<LensProfile> {
+        let cnf = self.config.as_ref().unwrap();
+        cnf.lens_profiles.iter().find_map(|p| {
+            if p.name == name {
+                Some(p.clone())
+            } else {
+                None
+            }
+        })
     }
 }
 
@@ -927,4 +976,40 @@ fn is_aperture_valid(text: &String) -> bool {
 
 fn is_focal_length_valid(text: &String) -> bool {
     FL_VALIDATOR.is_match(text.as_bytes())
+}
+
+async fn apply_profile_to_images(
+    root_path: String,
+    profile: LensProfile,
+    aperture: String,
+    focal_length: String,
+    images: Vec<FileRec>,
+) -> bool {
+    // Parse actual aperture if provided
+    let actual_aperture = if !aperture.is_empty() {
+        Some(aperture)
+    } else {
+        None
+    };
+
+    // Parse actual focal length if provided
+    let actual_focal_length: Option<f32> = if !focal_length.is_empty() {
+        Some(focal_length.parse().unwrap())
+    } else {
+        None
+    };
+
+    // Get all selected (checked) images
+    let selected_files: Vec<String> = images
+        .iter()
+        .filter(|file_rec| file_rec.is_selected())
+        .map(|file_rec| file_rec.exif_info().file_path.clone())
+        .collect();
+
+    // Create ExifChanges
+    let changes = ExifChanges::new(&profile, actual_focal_length, actual_aperture);
+
+    // Apply changes to all selected files
+    apply_profile(None, root_path.as_str(), selected_files, changes).await;
+    true
 }

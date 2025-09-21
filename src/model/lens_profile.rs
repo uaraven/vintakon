@@ -48,7 +48,10 @@ impl Config {
 
         // If XDG_CONFIG_HOME is not set, try ~/.config/vintakon/config.json
         if let Some(home_dir) = std::env::var_os("HOME") {
-            let config_path = Path::new(&home_dir).join(".config").join("vintakon").join("config.json");
+            let config_path = Path::new(&home_dir)
+                .join(".config")
+                .join("vintakon")
+                .join("config.json");
             if let Ok(config) = Self::load_from_file(&config_path) {
                 return config;
             }
@@ -94,7 +97,10 @@ impl Config {
         let config_path = if let Some(config_home) = std::env::var_os("XDG_CONFIG_HOME") {
             Path::new(&config_home).join("vintakon").join("config.json")
         } else if let Some(home_dir) = std::env::var_os("HOME") {
-            Path::new(&home_dir).join(".config").join("vintakon").join("config.json")
+            Path::new(&home_dir)
+                .join(".config")
+                .join("vintakon")
+                .join("config.json")
         } else {
             return Err("Unable to determine config directory: neither XDG_CONFIG_HOME nor HOME environment variables are set".into());
         };
@@ -424,7 +430,10 @@ mod tests {
         let loaded_config = Config::load_with_fallback();
         assert_eq!(loaded_config.lens_profiles.len(), 1);
         assert_eq!(loaded_config.lens_profiles[0].name, "Test Local Lens");
-        assert_eq!(loaded_config.exiftool_path.as_deref(), Some("/usr/local/bin/exiftool"));
+        assert_eq!(
+            loaded_config.exiftool_path.as_deref(),
+            Some("/usr/local/bin/exiftool")
+        );
 
         // Clean up
         let _ = fs::remove_file("vintakon.conf");

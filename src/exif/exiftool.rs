@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use image::io::Reader as ImageReader;
 use serde_json::Value;
 use std::io::Cursor;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn supported_extensions() -> Vec<&'static str> {
@@ -187,24 +188,33 @@ fn parse_exif_entry(entry: &Value) -> Option<ExifInfo> {
     })
 }
 
-pub fn apply_profile(
+pub async fn apply_profile(
     exiftool_program: Option<String>,
+    dir: &str,
     file_names: Vec<String>,
-    changes: Vec<ExifChanges>,
+    changes: ExifChanges,
 ) {
-    let exif_tool_program = exiftool_program.unwrap_or_else(|| "exiftool".to_string());
+    let exif_tool_program = match exiftool_program {
+        Some(program) => program,
+        None => "exiftool".to_string(),
+    };
 
     let mut cmd = Command::new(exif_tool_program);
+    cmd.current_dir(dir);
     cmd.arg("-q");
-    for change in changes {
-        cmd.args(change.to_exif_tool());
-    }
+    cmd.args(changes.to_exif_tool());
     for file_name in file_names {
-        cmd.arg(file_name);
+        let rel_name = Path::new(file_name.as_str());
+        let rel_name = rel_name.strip_prefix(dir).unwrap_or(rel_name);
+        cmd.arg(rel_name);
     }
+    cmd.get_args().for_each(|f| println!("{} ", f.display()));
 
     match cmd.output() {
-        Ok(_) => {}
+        Ok(output) => {
+            println!("{}", String::from_utf8_lossy(&output.stdout));
+            println!("{}", String::from_utf8_lossy(&output.stderr));
+        }
         Err(e) => {
             eprintln!("Failed to run exiftool: {}", e);
         }
