@@ -177,8 +177,8 @@ impl VintakonApp {
             Message::ProfileMinFocalChange(index, focal) => {
                 if let Some(ref mut config) = self.temp_config {
                     if let Some(profile) = config.lens_profiles.get_mut(index) {
-                        if let Ok(value) = focal.parse::<f32>() {
-                            profile.min_focal_length = value;
+                        if is_focal_length_valid(&focal) {
+                            profile.min_focal_length = focal.parse().unwrap_or_default();
                         }
                     }
                 }
@@ -186,8 +186,8 @@ impl VintakonApp {
             Message::ProfileMaxFocalChange(index, focal) => {
                 if let Some(ref mut config) = self.temp_config {
                     if let Some(profile) = config.lens_profiles.get_mut(index) {
-                        if let Ok(value) = focal.parse::<f32>() {
-                            profile.max_focal_length = value;
+                        if is_focal_length_valid(&focal) {
+                            profile.max_focal_length = focal.parse().unwrap_or_default();
                         }
                     }
                 }
@@ -195,22 +195,26 @@ impl VintakonApp {
             Message::ProfileMinApertureChange(index, aperture) => {
                 if let Some(ref mut config) = self.temp_config {
                     if let Some(profile) = config.lens_profiles.get_mut(index) {
-                        profile.min_aperture = aperture;
+                        if is_aperture_valid(&aperture) {
+                            profile.min_aperture = aperture;
+                        }
                     }
                 }
             }
             Message::ProfileMaxApertureChange(index, aperture) => {
                 if let Some(ref mut config) = self.temp_config {
                     if let Some(profile) = config.lens_profiles.get_mut(index) {
-                        profile.max_aperture = aperture;
+                        if is_aperture_valid(&aperture) {
+                            profile.max_aperture = aperture;
+                        }
                     }
                 }
             }
             Message::ProfileCropFactorChange(index, factor) => {
                 if let Some(ref mut config) = self.temp_config {
                     if let Some(profile) = config.lens_profiles.get_mut(index) {
-                        if let Ok(value) = factor.parse::<f32>() {
-                            profile.crop_factor = value;
+                        if is_aperture_valid(&factor) {
+                            profile.crop_factor = factor.parse().unwrap_or(1.0);
                         }
                     }
                 }

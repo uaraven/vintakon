@@ -208,7 +208,7 @@ pub async fn apply_profile(
         let rel_name = rel_name.strip_prefix(dir).unwrap_or(rel_name);
         cmd.arg(rel_name);
     }
-    cmd.get_args().for_each(|f| println!("{} ", f.display()));
+    // cmd.get_args().for_each(|f| println!("{} ", f.display()));
 
     match cmd.output() {
         Ok(output) => {
