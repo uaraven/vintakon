@@ -1,7 +1,7 @@
 use std::sync::LazyLock;
 
 use iced::{
-    Element, Length, Task, Theme,
+    Alignment, Element, Length, Task, Theme,
     event::Event,
     keyboard::{self, key},
     widget::{
@@ -362,11 +362,14 @@ impl VintakonApp {
         ]
         .spacing(10);
         if !file_rec.has_lens_data() {
-            file_row = file_row.push(
-                image(image::Handle::from_bytes(resources::BAD_LENS))
-                    .width(24)
-                    .height(24),
-            );
+            file_row = file_row
+                .push(
+                    image(image::Handle::from_bytes(resources::BAD_LENS))
+                        .width(24)
+                        .height(24),
+                )
+                .align_y(Alignment::Center)
+                .padding(10);
         }
 
         if is_selected_file {
