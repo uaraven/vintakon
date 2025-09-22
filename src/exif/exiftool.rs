@@ -123,10 +123,6 @@ fn parse_exif_entry(entry: &Value) -> Option<ExifInfo> {
         .get("LensModel")
         .and_then(|v| v.as_str())
         .map(String::from);
-    let exposure_compensation = entry
-        .get("ExposureCompensation")
-        .and_then(|v| v.as_str())
-        .map(String::from);
     let iso = entry.get("ISO").and_then(|v| v.as_str()).map(String::from);
     let aperture = entry
         .get("Aperture")
@@ -183,7 +179,6 @@ fn parse_exif_entry(entry: &Value) -> Option<ExifInfo> {
         lens_make,
         lens_model,
         lens_info,
-        exposure_compensation,
         iso,
         aperture,
         shutter_speed,

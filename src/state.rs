@@ -381,7 +381,8 @@ impl VintakonApp {
             .spacing(2)
             .width(Length::Fill)
         ]
-        .spacing(10);
+        .spacing(10)
+        .align_y(Alignment::Center);
         if !file_rec.has_lens_data() {
             file_row = file_row
                 .push(
@@ -390,7 +391,6 @@ impl VintakonApp {
                         .height(24),
                 )
                 .align_y(Alignment::Center)
-                .padding(10);
         }
 
         if is_selected_file {
@@ -1013,6 +1013,10 @@ fn view_metadata(exif_info: &crate::exif::exif::ExifInfo) -> iced::widget::Colum
     }
     if let Some(focal_length) = &exif_info.focal_length {
         metadata = metadata.push(text(format!("Focal Length: {}", focal_length)).size(12));
+    }
+    if let Some(focal_length_35mm) = &exif_info.focal_length_35mm {
+        metadata =
+            metadata.push(text(format!("Focal Length (35mm): {}", focal_length_35mm)).size(12));
     }
     metadata
 }

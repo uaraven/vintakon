@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{fs, io, path::Path};
+use std::{fs, path::Path};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LensProfile {
@@ -75,8 +75,10 @@ impl Config {
         Ok(config)
     }
 
+    #[cfg(test)]
     /// Loads a Config from a JSON file, or creates a new one if the file doesn't exist
     pub fn load_or_create<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
+        use std::io;
         match Self::load_from_file(&path) {
             Ok(config) => Ok(config),
             Err(e) => {

@@ -18,6 +18,7 @@ fn main() -> iced::Result {
     let settings = window::Settings {
         resizable: true,
         decorations: true,
+        min_size: Some(iced::Size::new(1200.0, 800.0)),
         icon: Some(app_icon),
         ..window::Settings::default()
     };
@@ -27,5 +28,6 @@ fn main() -> iced::Result {
         .theme(|_| Theme::Dark)
         .window(settings)
         .settings(Settings::default())
+        .antialiasing(true)
         .run_with(VintakonApp::new)
 }

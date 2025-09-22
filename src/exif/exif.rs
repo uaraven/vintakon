@@ -107,11 +107,6 @@ impl Display for LensInfo {
     }
 }
 
-pub(crate) struct ExifTag {
-    pub tag: String,
-    pub value: String,
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct ExifInfo {
     pub file_path: String,
@@ -121,7 +116,6 @@ pub(crate) struct ExifInfo {
     pub lens_make: Option<String>,
     pub lens_model: Option<String>,
     pub lens_info: Option<LensInfo>,
-    pub exposure_compensation: Option<String>,
     pub iso: Option<String>,
     pub aperture: Option<String>,
     pub shutter_speed: Option<String>,
