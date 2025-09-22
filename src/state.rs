@@ -48,9 +48,11 @@ pub(crate) enum Message {
     DeleteProfile(usize),
     SaveSettings,
     Event(Event),
+    ExiftoolPathChange(String),
+    SelectExiftoolPath,
     SelectProfile(usize),
     ApplyProfile,
-    ProfileApplied(bool),
+    ProfileApplied(()),
 }
 
 #[derive(Default)]
@@ -103,7 +105,10 @@ impl VintakonApp {
         match message {
             Message::PathChange(new_path) => {
                 self.is_loading = true;
-                return Task::perform(load_images(new_path), Message::LoadImages);
+                return Task::perform(
+                    load_images(new_path, self.config.clone().and_then(|c| c.exiftool_path)),
+                    Message::LoadImages,
+                );
             }
             Message::LoadImages(folder_images) => {
                 self.images = folder_images.1;
@@ -222,7 +227,7 @@ impl VintakonApp {
             Message::AddNewProfile => {
                 if let Some(ref mut config) = self.temp_config {
                     config.lens_profiles.push(LensProfile {
-                        name: "New Lens".to_string(),
+                        name: format!("New Lens {}", config.lens_profiles.len() + 1),
                         lens_make: "".to_string(),
                         lens_model: "".to_string(),
                         min_focal_length: 50.0,
@@ -273,6 +278,14 @@ impl VintakonApp {
                 self.temp_config = None;
                 self.selected_profile_index = None;
             }
+            Message::ExiftoolPathChange(path) => {
+                if let Some(ref mut config) = self.temp_config {
+                    config.exiftool_path = if path.is_empty() { None } else { Some(path) };
+                }
+            }
+            Message::SelectExiftoolPath => {
+                return Task::perform(select_exiftool_file(), Message::ExiftoolPathChange);
+            }
             Message::SelectProfile(index) => {
                 self.selected_profile_index = Some(index);
             }
@@ -291,6 +304,7 @@ impl VintakonApp {
                         false => None,
                     })
                     .collect();
+                let exiftool = self.config.clone().and_then(|c| c.exiftool_path);
 
                 return Task::perform(
                     apply_profile_to_images(
@@ -299,13 +313,20 @@ impl VintakonApp {
                         self.apply_aperture.clone(),
                         self.apply_focal_length.clone(),
                         selected,
+                        exiftool,
                     ),
                     Message::ProfileApplied,
                 );
             }
             Message::ProfileApplied(_) => {
                 self.is_applying = false;
-                return Task::perform(load_images(self.path.clone().unwrap()), Message::LoadImages);
+                return Task::perform(
+                    load_images(
+                        self.path.clone().unwrap(),
+                        self.config.clone().and_then(|c| c.exiftool_path),
+                    ),
+                    Message::LoadImages,
+                );
             }
             Message::Event(event) => match event {
                 Event::Keyboard(keyboard::Event::KeyPressed {
@@ -501,6 +522,9 @@ impl VintakonApp {
         }
     }
 
+    /// Renders the main content pane of the application.
+    /// Left side contains a list of images, the right side contains their EXIF information and a preview
+    /// When loading or applying a lens profile, the whole content is replaced with an indicator text.
     fn view_content_pane(&self) -> iced::widget::Row<'_, Message> {
         if self.is_applying {
             row![
@@ -554,8 +578,8 @@ impl VintakonApp {
 
     fn view_apply_profile(&self) -> iced::widget::Column<'_, Message> {
         column![
-            text("Apply Lens Profile").size(16),
             Rule::horizontal(5),
+            text("Apply Lens Profile").size(16),
             row![
                 column![
                     row![
@@ -622,12 +646,42 @@ impl VintakonApp {
     }
 
     fn view_settings_dialog(&self) -> Element<Message, Theme> {
-        let _temp_config = self.temp_config.as_ref().unwrap();
+        let temp_config = self.temp_config.as_ref().unwrap();
+
+        // Exiftool path section
+        let exiftool_path_section = Container::new(
+            column![
+                text("Exiftool Path").size(16),
+                row![
+                    text_input(
+                        "Path to exiftool executable",
+                        temp_config.exiftool_path.as_deref().unwrap_or("")
+                    )
+                    .on_input(Message::ExiftoolPathChange)
+                    .width(Length::Fill),
+                    tooltip(
+                        button(
+                            image(image::Handle::from_bytes(resources::OPEN))
+                                .width(24)
+                                .height(24)
+                        )
+                        .on_press(Message::SelectExiftoolPath),
+                        "Select location of 'exiftool' utility",
+                        tooltip::Position::Left
+                    ),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center),
+            ]
+            .spacing(10),
+        )
+        .padding(20)
+        .width(Length::Fill);
 
         let profile_list = self.view_profile_list();
         let profile_editor = self.view_profile_editor();
 
-        let main_content = row![
+        let profile_content = row![
             Container::new(profile_list)
                 .width(Length::FillPortion(1))
                 .height(Length::Fill)
@@ -650,9 +704,15 @@ impl VintakonApp {
         .align_x(iced::alignment::Horizontal::Right)
         .padding(20);
 
-        column![main_content, bottom_buttons,]
-            .height(Length::Fill)
-            .into()
+        column![
+            exiftool_path_section,
+            Rule::horizontal(2),
+            profile_content,
+            Rule::horizontal(2),
+            bottom_buttons,
+        ]
+        .height(Length::Fill)
+        .into()
     }
 
     fn create_focused_text_input<'a, F>(
@@ -690,52 +750,62 @@ impl VintakonApp {
         for (index, profile) in temp_config.lens_profiles.iter().enumerate() {
             let is_selected = self.selected_profile_index == Some(index);
 
-            let profile_button = button(text(&profile.name).size(14).width(Length::Fill))
-                .width(Length::Fill)
-                .on_press(Message::SelectProfile(index));
-
-            let profile_item = if is_selected {
-                Container::new(profile_button)
+            let profile_item: Element<Message, Theme> = if is_selected {
+                Container::new(text(&profile.name).size(14).width(Length::Fill))
                     .style(|theme: &Theme| {
                         use iced::Background;
                         iced::widget::container::Style {
                             background: Some(Background::Color(theme.palette().primary)),
-                            border: iced::Border {
-                                radius: 4.0.into(),
-                                ..Default::default()
-                            },
                             ..Default::default()
                         }
                     })
                     .padding(2)
+                    .into()
             } else {
-                Container::new(profile_button).padding(2)
+                button(text(&profile.name).size(14).width(Length::Fill))
+                    .width(Length::Fill)
+                    .on_press(Message::SelectProfile(index))
+                    .style(|theme: &Theme, _status| iced::widget::button::Style {
+                        background: None,
+                        text_color: theme.palette().text,
+                        ..Default::default()
+                    })
+                    .padding(2)
+                    .into()
             };
 
             profile_list = profile_list.push(profile_item);
         }
 
         let buttons = row![
-            button(
-                image(image::Handle::from_bytes(resources::ADD))
-                    .width(24)
-                    .height(24),
-            )
-            .on_press(Message::AddNewProfile),
-            if let Some(selected) = self.selected_profile_index {
+            tooltip(
                 button(
-                    image(image::Handle::from_bytes(resources::DELETE))
+                    image(image::Handle::from_bytes(resources::ADD))
                         .width(24)
                         .height(24),
                 )
-                .on_press(Message::DeleteProfile(selected))
-            } else {
-                button(
-                    image(image::Handle::from_bytes(resources::DELETE))
-                        .width(24)
-                        .height(24),
-                ) // Disabled when no selection
-            }
+                .on_press(Message::AddNewProfile),
+                "Add new profile",
+                tooltip::Position::Top
+            ),
+            tooltip(
+                if let Some(selected) = self.selected_profile_index {
+                    button(
+                        image(image::Handle::from_bytes(resources::DELETE))
+                            .width(24)
+                            .height(24),
+                    )
+                    .on_press(Message::DeleteProfile(selected))
+                } else {
+                    button(
+                        image(image::Handle::from_bytes(resources::DELETE))
+                            .width(24)
+                            .height(24),
+                    )
+                },
+                "Delete selected profile",
+                tooltip::Position::Top,
+            )
         ]
         .spacing(10);
 
@@ -792,34 +862,31 @@ impl VintakonApp {
                         .width(Length::Fill),
                     ]
                     .spacing(10),
-                    row![
-                        column![
-                            text("Min Focal Length:").size(12),
+                    column![
+                        text("Focal Length Range").size(12),
+                        row![
                             self.create_focused_text_input(
-                                "Min focal",
+                                "Min",
                                 &profile.min_focal_length.to_string(),
                                 &format!("profile_{}_min_focal", selected_index),
                                 move |focal| Message::ProfileMinFocalChange(selected_index, focal)
-                            ),
-                        ]
-                        .spacing(5)
-                        .width(Length::FillPortion(1)),
-                        column![
-                            text("Max Focal Length:").size(12),
+                            )
+                            .width(Length::FillPortion(1)),
+                            text("-"),
                             self.create_focused_text_input(
-                                "Max focal",
+                                "Max",
                                 &profile.max_focal_length.to_string(),
                                 &format!("profile_{}_max_focal", selected_index),
                                 move |focal| Message::ProfileMaxFocalChange(selected_index, focal)
-                            ),
+                            )
+                            .width(Length::FillPortion(1)),
                         ]
-                        .spacing(5)
-                        .width(Length::FillPortion(1)),
+                        .spacing(10),
                     ]
                     .spacing(10),
-                    row![
-                        column![
-                            text("Min Aperture:").size(12),
+                    column![
+                        text("Max aperture range").size(12),
+                        row![
                             self.create_focused_text_input(
                                 "Min aperture",
                                 &profile.min_aperture,
@@ -828,12 +895,9 @@ impl VintakonApp {
                                     selected_index,
                                     aperture
                                 )
-                            ),
-                        ]
-                        .spacing(5)
-                        .width(Length::FillPortion(1)),
-                        column![
-                            text("Max Aperture:").size(12),
+                            )
+                            .width(Length::FillPortion(1)),
+                            text("-"),
                             self.create_focused_text_input(
                                 "Max aperture",
                                 &profile.max_aperture,
@@ -842,10 +906,10 @@ impl VintakonApp {
                                     selected_index,
                                     aperture
                                 )
-                            ),
+                            )
+                            .width(Length::FillPortion(1)),
                         ]
-                        .spacing(5)
-                        .width(Length::FillPortion(1)),
+                        .spacing(10),
                     ]
                     .spacing(10),
                     row![
@@ -953,8 +1017,8 @@ fn view_metadata(exif_info: &crate::exif::exif::ExifInfo) -> iced::widget::Colum
     metadata
 }
 
-async fn load_images(new_path: String) -> (String, Vec<FileRec>) {
-    let exif_data_list = read_files(&new_path);
+async fn load_images(new_path: String, exiftool: Option<String>) -> (String, Vec<FileRec>) {
+    let exif_data_list = read_files(&new_path, exiftool);
     let file_recs = exif_data_list
         .iter()
         .map(|exif| FileRec::new(exif.clone()))
@@ -965,6 +1029,19 @@ async fn load_images(new_path: String) -> (String, Vec<FileRec>) {
 async fn select_folder() -> String {
     if let Some(folder) = AsyncFileDialog::new().pick_folder().await {
         folder.path().to_string_lossy().to_string()
+    } else {
+        String::new()
+    }
+}
+
+async fn select_exiftool_file() -> String {
+    if let Some(file) = AsyncFileDialog::new()
+        .set_title("Select exiftool executable")
+        .add_filter("Executable", &["exe", ""])
+        .pick_file()
+        .await
+    {
+        file.path().to_string_lossy().to_string()
     } else {
         String::new()
     }
@@ -991,7 +1068,8 @@ async fn apply_profile_to_images(
     aperture: String,
     focal_length: String,
     images: Vec<FileRec>,
-) -> bool {
+    exiftool: Option<String>,
+) {
     // Parse actual aperture if provided
     let actual_aperture = if !aperture.is_empty() {
         Some(aperture)
@@ -1017,6 +1095,5 @@ async fn apply_profile_to_images(
     let changes = ExifChanges::new(&profile, actual_focal_length, actual_aperture);
 
     // Apply changes to all selected files
-    apply_profile(None, root_path.as_str(), selected_files, changes).await;
-    true
+    apply_profile(exiftool, root_path.as_str(), selected_files, changes).await;
 }

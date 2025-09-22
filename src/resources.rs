@@ -6,4 +6,5 @@ pub(crate) mod resources {
     pub const BAD_LENS: &[u8] = include_bytes!("../assets/bad_lens.png");
     pub const ADD: &[u8] = include_bytes!("../assets/add.png");
     pub const DELETE: &[u8] = include_bytes!("../assets/delete.png");
+    pub const OPEN: &[u8] = include_bytes!("../assets/open_file.png");
 }

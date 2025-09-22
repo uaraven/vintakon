@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use image::io::Reader as ImageReader;
 use serde_json::Value;
 use std::io::Cursor;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 fn supported_extensions() -> Vec<&'static str> {
@@ -14,11 +14,16 @@ fn supported_extensions() -> Vec<&'static str> {
     ]
 }
 
-pub(crate) fn read_files(path: &str) -> Vec<ExifInfo> {
+pub(crate) fn read_files(path: &str, exiftool_program: Option<String>) -> Vec<ExifInfo> {
     let mut exif_infos = Vec::new();
 
+    let exif_tool_program = match exiftool_program {
+        Some(program) => program,
+        None => "exiftool".to_string(),
+    };
+
     // Run exiftool command to extract EXIF data as JSON
-    let mut cmd = Command::new("exiftool");
+    let mut cmd = Command::new(exif_tool_program);
     cmd.arg("-j")
         .arg("-b")
         .arg("-q")
@@ -309,7 +314,7 @@ mod exiftool_test {
     fn test_read_files() {
         use super::read_files;
 
-        let exif_infos = read_files("test-data/img");
+        let exif_infos = read_files("test-data/img", None);
 
         assert!(!exif_infos.is_empty(), "Should read at least one file");
         assert!(
