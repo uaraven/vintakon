@@ -347,7 +347,7 @@ impl VintakonApp {
     }
 
     /// Renders the file list
-    fn view_file_list(&self) -> Element<Message, Theme> {
+    fn view_file_list(&self) -> Element<'_, Message, Theme> {
         let file_list = column(
             self.images
                 .iter()
@@ -365,7 +365,11 @@ impl VintakonApp {
     }
 
     /// Renders the single row of file list
-    fn view_file_row(&self, original_index: usize, file_rec: &FileRec) -> Element<Message, Theme> {
+    fn view_file_row(
+        &self,
+        original_index: usize,
+        file_rec: &FileRec,
+    ) -> Element<'_, Message, Theme> {
         let mod_time_str = file_rec.mod_time().format("%Y-%m-%d %H:%M:%S").to_string();
 
         let is_selected_file = self.selected_file_index == Some(original_index);
@@ -418,7 +422,7 @@ impl VintakonApp {
         }
     }
 
-    fn view_image_preview(&self) -> Element<Message, Theme> {
+    fn view_image_preview(&self) -> Element<'_, Message, Theme> {
         if let Some(selected_index) = self.selected_file_index {
             if let Some(selected_file) = self.images.get(selected_index) {
                 let exif_info = selected_file.exif_info();
@@ -474,7 +478,7 @@ impl VintakonApp {
         }
     }
 
-    fn view_header(&self) -> Element<Message, Theme> {
+    fn view_header(&self) -> Element<'_, Message, Theme> {
         let mut text = text(format!(
             "{}",
             self.path
@@ -508,7 +512,7 @@ impl VintakonApp {
         .into()
     }
 
-    pub fn view(&self) -> Element<Message, Theme> {
+    pub fn view(&self) -> Element<'_, Message, Theme> {
         if self.show_settings {
             self.view_settings_dialog()
         } else {
@@ -645,7 +649,7 @@ impl VintakonApp {
         .align_x(iced::Alignment::Center)
     }
 
-    fn view_settings_dialog(&self) -> Element<Message, Theme> {
+    fn view_settings_dialog(&self) -> Element<'_, Message, Theme> {
         let temp_config = self.temp_config.as_ref().unwrap();
 
         // Exiftool path section
@@ -741,7 +745,7 @@ impl VintakonApp {
         input
     }
 
-    fn view_profile_list(&self) -> Element<Message, Theme> {
+    fn view_profile_list(&self) -> Element<'_, Message, Theme> {
         let temp_config = self.temp_config.as_ref().unwrap();
 
         let mut profile_list =
@@ -815,7 +819,7 @@ impl VintakonApp {
             .into()
     }
 
-    fn view_profile_editor(&self) -> Element<Message, Theme> {
+    fn view_profile_editor(&self) -> Element<'_, Message, Theme> {
         let temp_config = self.temp_config.as_ref().unwrap();
 
         if let Some(selected_index) = self.selected_profile_index {
