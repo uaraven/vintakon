@@ -51,14 +51,14 @@ impl LensInfo {
         {
             Self::Prime {
                 focal_length: format!("{:.1}", profile.min_focal_length),
-                min_f: format!("{:.1}", profile.min_aperture),
+                min_f: format!("{}", profile.min_aperture.clone()),
             }
         } else {
             Self::Zoom {
                 min_focal_length: format!("{:.1}", profile.min_focal_length),
                 max_focal_length: format!("{:.1}", profile.max_focal_length),
-                min_f: format!("{:.1}", profile.min_aperture),
-                max_f: format!("{:.1}", profile.max_aperture),
+                min_f: format!("{}", profile.min_aperture.clone()),
+                max_f: format!("{}", profile.max_aperture.clone()),
             }
         }
     }

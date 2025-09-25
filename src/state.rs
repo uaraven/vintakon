@@ -131,7 +131,7 @@ impl VintakonApp {
                 self.selected_profile = Some(profile);
             }
             Message::ApertureChange(aperture) => {
-                if is_aperture_valid(&aperture) {
+                if is_valid_floating_point(&aperture) {
                     self.apply_aperture = aperture;
                 }
             }
@@ -200,7 +200,7 @@ impl VintakonApp {
             Message::ProfileMinApertureChange(index, aperture) => {
                 if let Some(ref mut config) = self.temp_config {
                     if let Some(profile) = config.lens_profiles.get_mut(index) {
-                        if is_aperture_valid(&aperture) {
+                        if is_valid_floating_point(&aperture) {
                             profile.min_aperture = aperture;
                         }
                     }
@@ -209,7 +209,7 @@ impl VintakonApp {
             Message::ProfileMaxApertureChange(index, aperture) => {
                 if let Some(ref mut config) = self.temp_config {
                     if let Some(profile) = config.lens_profiles.get_mut(index) {
-                        if is_aperture_valid(&aperture) {
+                        if is_valid_floating_point(&aperture) {
                             profile.max_aperture = aperture;
                         }
                     }
@@ -218,7 +218,7 @@ impl VintakonApp {
             Message::ProfileCropFactorChange(index, factor) => {
                 if let Some(ref mut config) = self.temp_config {
                     if let Some(profile) = config.lens_profiles.get_mut(index) {
-                        if is_aperture_valid(&factor) {
+                        if is_valid_floating_point(&factor) {
                             profile.crop_factor = factor.parse().unwrap_or(1.0);
                         }
                     }
@@ -1055,10 +1055,10 @@ const APERTURE_VALIDATOR: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(\d+\.?\d*)?$").unwrap());
 const FL_VALIDATOR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d*$").unwrap());
 
-/// Checks if focal length or aperture is matching
+/// Checks if focal length or aperture/crop factor is matching
 /// following regular expression:
 /// /\d+(\.\d+)?/
-fn is_aperture_valid(text: &String) -> bool {
+fn is_valid_floating_point(text: &String) -> bool {
     APERTURE_VALIDATOR.is_match(text.as_bytes())
 }
 
