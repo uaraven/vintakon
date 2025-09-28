@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Vintakon
+Comment=Exif editor for vintage lense information
+Exec=/usr/local/bin/vintakon
+Icon=vintakon.png
+Type=Application
+Categories=Utility;
