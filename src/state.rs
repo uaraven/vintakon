@@ -583,7 +583,7 @@ impl VintakonApp {
     fn view_apply_profile(&self) -> iced::widget::Column<'_, Message> {
         column![
             Rule::horizontal(5),
-            text("Apply Lens Profile").size(16),
+            text("Apply Lens Profile").size(15),
             row![
                 column![
                     row![
@@ -839,6 +839,9 @@ impl VintakonApp {
                         ]
                         .spacing(5)
                         .width(Length::FillPortion(1)),
+                    ]
+                    .spacing(10),
+                    row![
                         column![
                             text("Make:").size(12),
                             self.create_focused_text_input(
@@ -849,10 +852,7 @@ impl VintakonApp {
                             ),
                         ]
                         .spacing(5)
-                        .width(Length::FillPortion(1)),
-                    ]
-                    .spacing(10),
-                    row![
+                        .width(Length::Fill),
                         column![
                             text("Model:").size(12),
                             self.create_focused_text_input(
@@ -863,7 +863,7 @@ impl VintakonApp {
                             ),
                         ]
                         .spacing(5)
-                        .width(Length::Fill),
+                        .width(Length::FillPortion(1)),
                     ]
                     .spacing(10),
                     column![
@@ -885,7 +885,7 @@ impl VintakonApp {
                             )
                             .width(Length::FillPortion(1)),
                         ]
-                        .spacing(10),
+                        .spacing(10),   
                     ]
                     .spacing(10),
                     column![

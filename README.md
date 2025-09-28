@@ -11,7 +11,13 @@ most of the image file formats that are supported by exiftool.
 Vintakon name doesn't mean anything. It's just a play on word "vintage" and "-kon" suffix, which sounds like a
 vintage lens name.
 
-### Limitations
+## Using
+
+`exiftool` must be installed. Use your package manager to install it on Linux. On MacOS you can install it using Homebrew.
+
+On MacOS and Windows you need to set path to exiftool executable in settings. On linux it should work out of the box.
+
+## Limitations
 
 exiftool is unable to overwrite all tags. For example, `FocalLength` in Sony a7IV .ARW files
 is not stored in standard EXIF tag 920A, but instead in maker notes. Exiftool doesn't allow to
