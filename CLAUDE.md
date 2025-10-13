@@ -53,6 +53,8 @@ To run tests execute
 cargo test
 ```
 
+Do not assume that failing tests are incorrect. First try to fix them.
+
 ## UI
 
 UI is built using iced library.

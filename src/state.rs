@@ -272,6 +272,7 @@ impl VintakonApp {
                             .iter()
                             .map(|p| p.name.clone())
                             .collect();
+                        self.profile_names.sort_by(|a, b| a.cmp(b));
                     }
                 }
                 self.show_settings = false;
@@ -885,7 +886,7 @@ impl VintakonApp {
                             )
                             .width(Length::FillPortion(1)),
                         ]
-                        .spacing(10),   
+                        .spacing(10),
                     ]
                     .spacing(10),
                     column![
@@ -1056,7 +1057,7 @@ async fn select_exiftool_file() -> String {
 }
 
 const APERTURE_VALIDATOR: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(\d+\.?\d*)?$").unwrap());
+    LazyLock::new(|| Regex::new(r"^(\d+(\.\d*)?)?$").unwrap());
 const FL_VALIDATOR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d*$").unwrap());
 
 /// Checks if focal length or aperture/crop factor is matching

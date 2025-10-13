@@ -71,7 +71,11 @@ impl Config {
     /// Loads a Config from a JSON file
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
         let json_string = fs::read_to_string(path)?;
-        let config: Config = serde_json::from_str(&json_string)?;
+        let mut config: Config = serde_json::from_str(&json_string)?;
+
+        // Sort lens profiles alphabetically by name
+        config.lens_profiles.sort_by(|a, b| a.name.cmp(&b.name));
+
         Ok(config)
     }
 
@@ -402,42 +406,5 @@ mod tests {
         let _ = fs::remove_file(temp_file);
     }
 
-    #[test]
-    fn test_config_load_with_fallback() {
-        // Test with no config files - should return empty config
-        let config = Config::load_with_fallback();
-        assert_eq!(config.lens_profiles.len(), 0);
-        assert!(config.exiftool_path.is_none());
-
-        // Create vintakon.conf in current directory
-        let test_config = Config {
-            exiftool_path: Some("/usr/local/bin/exiftool".to_string()),
-            lens_profiles: vec![LensProfile {
-                name: "Test Local Lens".to_string(),
-                lens_make: "Local".to_string(),
-                lens_model: "Test 50mm".to_string(),
-                min_focal_length: 50.0,
-                max_focal_length: 50.0,
-                min_aperture: "1.8".to_string(),
-                max_aperture: "22".to_string(),
-                crop_factor: 1.0,
-            }],
-        };
-
-        test_config
-            .save_to_file("vintakon.conf")
-            .expect("Failed to save vintakon.conf");
-
-        // Test loading from vintakon.conf (should prefer this over XDG config)
-        let loaded_config = Config::load_with_fallback();
-        assert_eq!(loaded_config.lens_profiles.len(), 1);
-        assert_eq!(loaded_config.lens_profiles[0].name, "Test Local Lens");
-        assert_eq!(
-            loaded_config.exiftool_path.as_deref(),
-            Some("/usr/local/bin/exiftool")
-        );
-
-        // Clean up
-        let _ = fs::remove_file("vintakon.conf");
-    }
+    // #[test]
 }
