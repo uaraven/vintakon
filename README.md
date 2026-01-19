@@ -1,12 +1,12 @@
 # Vintakon
 
-![](data/app_icon_256.png)
+![](lens.png)
 
-Vintakon is an special case of Exiftool UI, specifically designed to create profiles for lenses that don't provide exif
-information and apply these profiles to multiple files at the same time.
+Vintakon is an UI for Exiftool, specifically designed to modify exif information for manual lenses that don't have electronic contacts and don't provide any exif information. Vintakon allows user to create profiles for their lenses and apply these profiles to multiple files simultaneously.
 
-Vintakon uses tested and proven [exiftool](https://exiftool.org/) for reading and writing exif information and supports
-most of the image file formats that are supported by exiftool.
+Vintakon uses tested and proven [exiftool](https://exiftool.org/) for reading and writing exif information and supports most of the image file formats that are supported by exiftool.
+
+![](screenshot.png)
 
 Vintakon name doesn't mean anything. It's just a play on word "vintage" and "-kon" suffix, which sounds like a
 vintage lens name.
