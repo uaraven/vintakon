@@ -1,33 +1,30 @@
-use iced::{
-    Settings, Theme,
-    window::{self, icon},
-};
-use image::ImageFormat;
+use freya::prelude::*;
 
-use crate::{resources::resources::APP_ICON, state::VintakonApp};
+use crate::resources::resources::APP_ICON;
 
 mod exif;
+mod logic;
 mod model;
 mod resources;
 mod state;
+mod ui;
 
-fn main() -> iced::Result {
-    let app_icon =
-        icon::from_file_data(APP_ICON, Some(ImageFormat::Png)).expect("Failed to load app icon");
+fn main() {
+    // Freya has its own executor, tokio is used for the background work (exiftool, dialogs)
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to start tokio runtime");
+    let _guard = runtime.enter();
 
-    let settings = window::Settings {
-        resizable: true,
-        decorations: true,
-        min_size: Some(iced::Size::new(1200.0, 800.0)),
-        icon: Some(app_icon),
-        ..window::Settings::default()
-    };
-
-    iced::application("Vintakon", VintakonApp::update, VintakonApp::view)
-        .subscription(VintakonApp::subscription)
-        .theme(|_| Theme::Dark)
-        .window(settings)
-        .settings(Settings::default())
-        .antialiasing(true)
-        .run_with(VintakonApp::new)
+    launch(
+        LaunchConfig::new().with_window(
+            WindowConfig::new(ui::app)
+                .with_title("Vintakon")
+                .with_size(1200., 800.)
+                .with_min_size(1200., 800.)
+                .with_icon(LaunchConfig::window_icon(APP_ICON))
+                .with_app_id("vintakon"),
+        ),
+    )
 }

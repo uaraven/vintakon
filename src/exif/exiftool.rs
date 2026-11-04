@@ -145,7 +145,7 @@ fn parse_exif_entry(entry: &Value) -> Option<ExifInfo> {
         .or_else(|| entry.get("JpgFromRaw"))
         .or_else(|| entry.get("ThumbnailImage"))
         .and_then(|v| v.as_str())
-        .and_then(|s| Some(if s.starts_with("base64:") { &s[7..] } else { s }))
+        .map(|s| s.strip_prefix("base64:").unwrap_or(s))
         .map(String::from);
 
     // Parse lens info
@@ -171,6 +171,9 @@ fn parse_exif_entry(entry: &Value) -> Option<ExifInfo> {
         }
     });
 
+    // Files without an embedded preview (e.g. edited JPEGs): decode the image itself
+    let preview_image = preview_image.or_else(|| load_plain_image(&file_path));
+
     Some(ExifInfo {
         file_path,
         mod_time,
@@ -186,6 +189,16 @@ fn parse_exif_entry(entry: &Value) -> Option<ExifInfo> {
         focal_length_35mm,
         preview_image,
     })
+}
+
+/// Decodes a plain JPEG file (downscaled) to use as a preview
+fn load_plain_image(file_path: &str) -> Option<image::DynamicImage> {
+    let ext = Path::new(file_path).extension()?.to_str()?.to_lowercase();
+    if ext != "jpg" && ext != "jpeg" {
+        return None;
+    }
+    let img = ImageReader::open(file_path).ok()?.decode().ok()?;
+    Some(img.thumbnail(1600, 1600))
 }
 
 pub async fn apply_profile(

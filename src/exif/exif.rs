@@ -51,14 +51,14 @@ impl LensInfo {
         {
             Self::Prime {
                 focal_length: format!("{:.1}", profile.min_focal_length),
-                min_f: format!("{}", profile.min_aperture.clone()),
+                min_f: profile.min_aperture.clone(),
             }
         } else {
             Self::Zoom {
                 min_focal_length: format!("{:.1}", profile.min_focal_length),
                 max_focal_length: format!("{:.1}", profile.max_focal_length),
-                min_f: format!("{}", profile.min_aperture.clone()),
-                max_f: format!("{}", profile.max_aperture.clone()),
+                min_f: profile.min_aperture.clone(),
+                max_f: profile.max_aperture.clone(),
             }
         }
     }
@@ -157,7 +157,7 @@ impl ExifChanges {
 
         let focal_length = fl.map(|f| format!("{:.1}", f.0));
         let focal_length_35mm = fl.map(|f| format!("{:.1}", f.1));
-        let lens_info = LensInfo::from_profile(&lens_profile);
+        let lens_info = LensInfo::from_profile(lens_profile);
 
         Self {
             make,
@@ -175,7 +175,7 @@ impl ExifChanges {
         if let Some(make) = &self.make {
             args.push(format!("-{}={}", tags::LENS_MAKE, make));
             lens.push_str(make.as_str());
-            lens.push_str(" ");
+            lens.push(' ');
         }
         if let Some(model) = &self.model {
             args.push(format!("-{}={}", tags::LENS_MODEL, model));
