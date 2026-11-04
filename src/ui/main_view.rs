@@ -15,10 +15,37 @@ impl Component for MainView {
         let state = use_consume::<AppState>();
         let show_apply = *state.show_apply.read();
 
+        let on_key = move |e: Event<KeyboardEventData>| {
+            // Ctrl (Cmd on macOS) shortcuts. The main screen is inactive while settings are open.
+            let modifier =
+                e.modifiers.contains(Modifiers::CONTROL) || e.modifiers.contains(Modifiers::META);
+            if !modifier || *state.show_settings.read() {
+                return;
+            }
+            match &e.key {
+                Key::Character(c) if c.eq_ignore_ascii_case("o") => state.select_folder(),
+                Key::Character(c) if c.eq_ignore_ascii_case("q") => std::process::exit(0),
+                Key::Named(NamedKey::Enter) => {
+                    let mut show = state.show_apply;
+                    if *show.read() {
+                        // The dialog is open: confirm it
+                        if state.selected_profile.read().is_some() {
+                            show.set(false);
+                            state.apply_profile();
+                        }
+                    } else if state.is_any_file_checked() {
+                        show.set(true);
+                    }
+                }
+                _ => {}
+            }
+        };
+
         rect()
             .expanded()
             .vertical()
             .content(Content::flex())
+            .on_global_key_down(on_key)
             .child(MenuBar)
             .child(Header)
             .child(ContentPane)
@@ -43,7 +70,7 @@ impl Component for MenuBar {
                         .on_close(move |_| show_menu.set(false))
                         .child(
                             MenuButton::new()
-                                .child("Open Folder...")
+                                .child("Open Folder...    Ctrl+O")
                                 .on_press(move |_| {
                                     show_menu.set(false);
                                     state.select_folder();
@@ -55,10 +82,34 @@ impl Component for MenuBar {
                         }))
                         .child(
                             MenuButton::new()
-                                .child("Exit")
+                                .child("Exit    Ctrl+Q")
                                 .on_press(move |_| std::process::exit(0)),
                         ),
                 )
+        });
+
+        let mut show_edit = use_state(|| false);
+        let can_apply = state.is_any_file_checked();
+
+        let edit_menu = show_edit().then(|| {
+            // MenuButton has no disabled state: dim the text and ignore the press instead
+            let label =
+                text("Select and apply profile...    Ctrl+Enter", 14.).color(if can_apply {
+                    colors().text_primary
+                } else {
+                    colors().text_secondary
+                });
+            rect()
+                .position(Position::new_absolute().top(32.).left(0.))
+                .child(Menu::new().on_close(move |_| show_edit.set(false)).child(
+                    MenuButton::new().child(label).on_press(move |_| {
+                        show_edit.set(false);
+                        if can_apply {
+                            let mut show = state.show_apply;
+                            show.set(true);
+                        }
+                    }),
+                ))
         });
 
         rect()
@@ -66,12 +117,31 @@ impl Component for MenuBar {
             .horizontal()
             .padding(2.)
             .child(
-                Button::new()
-                    .flat()
-                    .on_press(move |_| show_menu.toggle())
-                    .child("File"),
+                rect()
+                    .child(
+                        Button::new()
+                            .flat()
+                            .on_press(move |_| {
+                                show_edit.set(false);
+                                show_menu.toggle();
+                            })
+                            .child("File"),
+                    )
+                    .maybe_child(menu),
             )
-            .maybe_child(menu)
+            .child(
+                rect()
+                    .child(
+                        Button::new()
+                            .flat()
+                            .on_press(move |_| {
+                                show_menu.set(false);
+                                show_edit.toggle();
+                            })
+                            .child("Edit"),
+                    )
+                    .maybe_child(edit_menu),
+            )
     }
 }
 
@@ -109,8 +179,8 @@ impl Component for Header {
                     .padding(5.)
                     .spacing(5.)
                     .child(icon_button(
-                        "Apply lens profile to selected images",
-                        AttachedPosition::Bottom,
+                        "Apply lens profile",
+                        AttachedPosition::Right,
                         state.is_any_file_checked(),
                         icon(resources::APPLY),
                         move |_| {
@@ -123,7 +193,7 @@ impl Component for Header {
                     .child(rect().width(Size::flex(1.)).child(path_text))
                     .child(icon_button(
                         "Select a folder with photographs",
-                        AttachedPosition::Bottom,
+                        AttachedPosition::Left,
                         true,
                         icon(resources::OPEN_FOLDER),
                         move |_| state.select_folder(),
@@ -131,7 +201,7 @@ impl Component for Header {
                     .child(vertical_separator())
                     .child(icon_button(
                         "Settings",
-                        AttachedPosition::Bottom,
+                        AttachedPosition::Left,
                         true,
                         icon(resources::SETTINGS),
                         move |_| state.open_settings(),
@@ -323,6 +393,23 @@ impl Component for Preview {
         };
         let exif_info = selected_file.exif_info();
 
+        let preview_card = card(
+            selected_file.file_name(),
+            rect()
+                .width(Size::fill())
+                .spacing(10.)
+                .child(text(
+                    format!("Modified: {}", selected_file.mod_time().format(TIME_FORMAT)),
+                    12.,
+                ))
+                .maybe_child(preview.read().clone().map(|handle| {
+                    image(handle)
+                        .width(Size::fill())
+                        .aspect_ratio(AspectRatio::Min)
+                })),
+        );
+        let exif_card = card("Exif".to_string(), metadata(exif_info));
+
         ScrollView::new()
             .width(Size::fill())
             .height(Size::fill())
@@ -331,22 +418,29 @@ impl Component for Preview {
                     .width(Size::fill())
                     .padding(10.)
                     .spacing(10.)
-                    .child(text(selected_file.file_name(), 18.))
-                    .child(text(
-                        format!("Modified: {}", selected_file.mod_time().format(TIME_FORMAT)),
-                        12.,
-                    ))
-                    .maybe_child(preview.read().clone().map(|handle| {
-                        image(handle)
-                            .width(Size::fill())
-                            .aspect_ratio(AspectRatio::Min)
-                    }))
-                    .child(metadata(exif_info)),
+                    .child(preview_card)
+                    .child(exif_card),
             )
             .into_element()
     }
 }
 
+/// A rounded panel with a title and a content area
+fn card(title: String, content: impl IntoElement) -> impl IntoElement {
+    rect()
+        .width(Size::fill())
+        .vertical()
+        .padding(15.)
+        .spacing(12.)
+        .background(colors().surface_secondary)
+        .corner_radius(8.)
+        .border(Border::new().fill(colors().border).width(1.))
+        .child(text(title, 16.))
+        .child(divider(1.))
+        .child(content)
+}
+
+/// Table of the EXIF tags and their values that spans the whole width of the card
 fn metadata(exif_info: &ExifInfo) -> impl IntoElement {
     let fields: [(&str, Option<String>); 9] = [
         ("Make", exif_info.make.clone()),
@@ -372,11 +466,42 @@ fn metadata(exif_info: &ExifInfo) -> impl IntoElement {
         ),
     ];
 
-    rect().spacing(5.).children(
-        fields
-            .into_iter()
-            .filter_map(|(name, value)| value.map(|v| text(format!("{name}: {v}"), 12.).into())),
-    )
+    let rows: Vec<Element> = fields
+        .into_iter()
+        .filter_map(|(name, value)| value.map(|v| (name, v)))
+        .map(|(name, value)| {
+            rect()
+                .width(Size::fill())
+                .vertical()
+                .spacing(5.)
+                .child(
+                    rect()
+                        .width(Size::fill())
+                        .horizontal()
+                        .content(Content::flex())
+                        .spacing(10.)
+                        .child(
+                            rect()
+                                .width(Size::flex(1.))
+                                .child(text(name, 13.).color(colors().text_secondary)),
+                        )
+                        .child(rect().width(Size::flex(2.)).child(text(value, 13.))),
+                )
+                .child(divider(1.))
+                .into()
+        })
+        .collect();
+
+    if rows.is_empty() {
+        return text("No EXIF information", 13.)
+            .color(colors().text_secondary)
+            .into_element();
+    }
+    rect()
+        .width(Size::fill())
+        .spacing(5.)
+        .children(rows)
+        .into_element()
 }
 
 /// Modal dialog with the lens profile selection and the actual aperture / focal length

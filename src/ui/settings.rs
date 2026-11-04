@@ -19,7 +19,7 @@ impl Component for SettingsDialog {
 
         let exiftool_path = rect()
             .width(Size::fill())
-            .padding(20.)
+            .padding(10.)
             .spacing(10.)
             .vertical()
             .child(text("Exiftool Path", 16.))
@@ -69,32 +69,34 @@ impl Component for SettingsDialog {
                     .child(ProfileEditor),
             );
 
-        let bottom_buttons = rect()
-            .width(Size::fill())
-            .padding(20.)
-            .horizontal()
-            .main_align(Alignment::End)
-            .spacing(10.)
-            .child(
-                Button::new()
-                    .on_press(move |_| state.close_settings())
-                    .child("Cancel"),
-            )
-            .child(
-                Button::new()
-                    .on_press(move |_| state.save_settings())
-                    .child("Ok"),
-            );
-
-        rect()
-            .expanded()
+        let body = rect()
+            .width(Size::px(828.))
+            .height(Size::px(520.))
             .vertical()
             .content(Content::flex())
             .child(exiftool_path)
-            .child(divider(2.))
-            .child(profiles)
-            .child(divider(2.))
-            .child(bottom_buttons)
+            .child(divider(1.))
+            .child(profiles);
+
+        Popup::new()
+            // dialog width = content width + popup padding (2x8) + content padding (2x8)
+            .width(Size::px(860.))
+            .on_close_request(move |_| state.close_settings())
+            .child(PopupTitle::new("Settings".to_string()))
+            .child(PopupContent::new().child(body))
+            .child(
+                PopupButtons::new()
+                    .child(
+                        Button::new()
+                            .on_press(move |_| state.close_settings())
+                            .child("Cancel"),
+                    )
+                    .child(
+                        Button::new()
+                            .on_press(move |_| state.save_settings())
+                            .child("Ok"),
+                    ),
+            )
     }
 }
 

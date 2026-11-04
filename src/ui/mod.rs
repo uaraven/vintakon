@@ -6,7 +6,7 @@ use freya::prelude::*;
 
 use crate::state::AppState;
 
-/// Root component. Shows either the main screen or the settings dialog
+/// Root component. Shows the main screen, with the settings dialog on top of it when open
 pub fn app() -> impl IntoElement {
     let state = AppState::new();
     use_provide_context(|| state);
@@ -26,15 +26,12 @@ pub fn app() -> impl IntoElement {
     });
     let colors = widgets::colors();
 
-    let screen: Element = if *state.show_settings.read() {
-        settings::SettingsDialog.into()
-    } else {
-        main_view::MainView.into()
-    };
+    let show_settings = *state.show_settings.read();
 
     rect()
         .expanded()
         .background(colors.background)
         .color(colors.text_primary)
-        .child(screen)
+        .child(main_view::MainView)
+        .maybe_child(show_settings.then(|| settings::SettingsDialog.into_element()))
 }
