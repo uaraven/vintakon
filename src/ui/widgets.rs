@@ -2,7 +2,7 @@
 
 use freya::prelude::*;
 
-use crate::resources::resources::Icon;
+use crate::resources::Icon;
 
 /// Color of the "primary" accent, used for the selected list items
 pub const PRIMARY: (u8, u8, u8) = (88, 101, 242);
@@ -102,6 +102,46 @@ pub fn text(content: impl Into<std::borrow::Cow<'static, str>>, size: f32) -> La
     label().font_size(size).text(content)
 }
 
+/// Button that is clearly grayed out when disabled (the default theme only dims it by 10%)
+pub fn button(enabled: bool) -> Button {
+    let button = Button::new().enabled(enabled);
+    if enabled {
+        return button;
+    }
+    let (background, text) = if is_dark() {
+        (Color::from_rgb(58, 58, 58), Color::from_rgb(120, 120, 120))
+    } else {
+        (
+            Color::from_rgb(220, 220, 220),
+            Color::from_rgb(150, 150, 150),
+        )
+    };
+    button.theme_colors(
+        ButtonColorsThemePartial::new()
+            .background(background)
+            .hover_background(background)
+            .border_fill(background)
+            .color(text),
+    )
+}
+
+/// A rounded panel with a title and a content area. To make the content scroll or stretch,
+/// give it a flexible height (`Size::flex`) and the card a fixed one
+pub fn card(title: String, content: impl IntoElement) -> Rect {
+    rect()
+        .width(Size::fill())
+        .vertical()
+        .content(Content::flex())
+        .padding(15.)
+        .spacing(12.)
+        .background(colors().surface_secondary)
+        .corner_radius(8.)
+        .border(Border::new().fill(colors().border).width(1.))
+        .child(text(title, 16.))
+        .child(divider(1.))
+        .child(content)
+}
+
 /// Icon button with a tooltip
 pub fn icon_button(
     tooltip: &'static str,
@@ -112,12 +152,7 @@ pub fn icon_button(
 ) -> impl IntoElement {
     TooltipContainer::new(Tooltip::new(tooltip))
         .position(position)
-        .child(
-            Button::new()
-                .enabled(enabled)
-                .on_press(on_press)
-                .child(icon),
-        )
+        .child(button(enabled).on_press(on_press).child(icon))
 }
 
 /// A box that centers its content in all the available space
@@ -125,23 +160,32 @@ pub fn centered(child: impl IntoElement) -> impl IntoElement {
     rect().expanded().center().child(child)
 }
 
-/// Menu item caption with its keyboard shortcut. The modifier is Cmd on macOS and Ctrl elsewhere
-pub fn with_shortcut(caption: &str, key: &str) -> String {
+/// Width of the menu item content, wide enough for the longest caption with its shortcut
+const MENU_ITEM_WIDTH: f32 = 340.;
+
+/// Content of a menu item: the caption on the left and the keyboard shortcut (Cmd on macOS,
+/// Ctrl elsewhere) on the right. It keeps the default font size and color of the menu, so all
+/// the items look the same; disabled items are dimmed (`MenuButton` has no disabled state)
+pub fn menu_label(
+    caption: &'static str,
+    shortcut_key: Option<&'static str>,
+    enabled: bool,
+) -> Rect {
     let modifier = if cfg!(target_os = "macos") {
         "Cmd"
     } else {
         "Ctrl"
     };
-    format!("{caption}    {modifier}+{key}")
-}
-
-/// Content of a menu item. It keeps the default font size and color of the menu, so all the items
-/// look the same; disabled items are dimmed (`MenuButton` has no disabled state of its own)
-pub fn menu_label(caption: String, enabled: bool) -> Label {
-    let item = label().text(caption);
+    let row = rect()
+        .width(Size::px(MENU_ITEM_WIDTH))
+        .horizontal()
+        .content(Content::flex())
+        .spacing(20.)
+        .child(rect().width(Size::flex(1.)).child(label().text(caption)))
+        .maybe_child(shortcut_key.map(|key| label().text(format!("{modifier}+{key}"))));
     if enabled {
-        item
+        row
     } else {
-        item.color(colors().text_secondary)
+        row.color(colors().text_secondary)
     }
 }

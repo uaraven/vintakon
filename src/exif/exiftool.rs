@@ -1,4 +1,4 @@
-use crate::exif::exif::{ExifChanges, ExifInfo, LensInfo};
+use crate::exif::info::{ExifChanges, ExifInfo, LensInfo};
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
 use image::io::Reader as ImageReader;
@@ -171,9 +171,6 @@ fn parse_exif_entry(entry: &Value) -> Option<ExifInfo> {
         }
     });
 
-    // Files without an embedded preview (e.g. edited JPEGs): decode the image itself
-    let preview_image = preview_image.or_else(|| load_plain_image(&file_path));
-
     Some(ExifInfo {
         file_path,
         mod_time,
@@ -191,8 +188,9 @@ fn parse_exif_entry(entry: &Value) -> Option<ExifInfo> {
     })
 }
 
-/// Decodes a plain JPEG file (downscaled) to use as a preview
-fn load_plain_image(file_path: &str) -> Option<image::DynamicImage> {
+/// Decodes a plain JPEG file (downscaled) to use as a preview. Used for the files
+/// without an embedded preview (e.g. edited JPEGs); decoding is too slow to do for the whole folder
+pub(crate) fn load_plain_image(file_path: &str) -> Option<image::DynamicImage> {
     let ext = Path::new(file_path).extension()?.to_str()?.to_lowercase();
     if ext != "jpg" && ext != "jpeg" {
         return None;
@@ -201,13 +199,14 @@ fn load_plain_image(file_path: &str) -> Option<image::DynamicImage> {
     Some(img.thumbnail(1600, 1600))
 }
 
-/// Writes the changes to the files. Blocks while exiftool is running
+/// Writes the changes to the files. Blocks while exiftool is running.
+/// Returns the error message if exiftool could not be started or reported errors
 pub fn apply_profile(
     exiftool_program: Option<String>,
     dir: &str,
     file_names: Vec<String>,
     changes: ExifChanges,
-) {
+) -> Result<(), String> {
     let exif_tool_program = match exiftool_program {
         Some(program) => program,
         None => "exiftool".to_string(),
@@ -224,20 +223,28 @@ pub fn apply_profile(
     }
     // cmd.get_args().for_each(|f| println!("{} ", f.display()));
 
-    match cmd.output() {
-        Ok(output) => {
-            println!("{}", String::from_utf8_lossy(&output.stdout));
-            println!("{}", String::from_utf8_lossy(&output.stderr));
-        }
-        Err(e) => {
-            eprintln!("Failed to run exiftool: {}", e);
-        }
-    };
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run exiftool: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    println!("{stdout}");
+    println!("{stderr}");
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "exiftool failed with status {}:\n{}",
+            output.status,
+            stderr.trim()
+        ))
+    }
 }
 
 #[cfg(test)]
 mod exiftool_test {
-    use crate::exif::{exif::LensInfo, exiftool::parse_exif_entry};
+    use crate::exif::{exiftool::parse_exif_entry, info::LensInfo};
     fn load_test_data(name: &str) -> serde_json::Value {
         let path = format!("test-data/{}.json", name);
         let data = std::fs::read_to_string(path).expect("Failed to read test data");

@@ -8,8 +8,8 @@ use rfd::AsyncFileDialog;
 
 use crate::{
     exif::{
-        exif::ExifChanges,
         exiftool::{apply_profile, read_files},
+        info::ExifChanges,
     },
     model::{file_rec::FileRec, lens_profile::LensProfile},
 };
@@ -62,15 +62,15 @@ pub(crate) async fn select_exiftool_file() -> Option<String> {
         .map(|file| file.path().to_string_lossy().to_string())
 }
 
-/// Writes lens profile to all checked images
+/// Writes lens profile to the given files. Returns the error message if exiftool failed
 pub(crate) async fn apply_profile_to_images(
     root_path: String,
     profile: LensProfile,
     aperture: String,
     focal_length: String,
-    images: Vec<FileRec>,
+    selected_files: Vec<String>,
     exiftool: Option<String>,
-) {
+) -> Result<(), String> {
     let actual_aperture = if !aperture.is_empty() {
         Some(aperture)
     } else {
@@ -80,19 +80,14 @@ pub(crate) async fn apply_profile_to_images(
     // The input is validated to contain digits only, so parsing can only fail on overflow
     let actual_focal_length: Option<f32> = focal_length.parse().ok();
 
-    let selected_files: Vec<String> = images
-        .iter()
-        .filter(|file_rec| file_rec.is_selected())
-        .map(|file_rec| file_rec.exif_info().file_path.clone())
-        .collect();
-
     let changes = ExifChanges::new(&profile, actual_focal_length, actual_aperture);
 
     // exiftool blocks until it is done, so keep it off the UI thread
-    let _ = tokio::task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         apply_profile(exiftool, root_path.as_str(), selected_files, changes)
     })
-    .await;
+    .await
+    .map_err(|e| format!("Writing the lens profile was interrupted: {e}"))?
 }
 
 #[cfg(test)]

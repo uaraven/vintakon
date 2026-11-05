@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# CWD=$(pwd)
+# trap 'cd "$CWD"' EXIT
+
 cargo build --release
 
 mkdir -p target/MacOs/

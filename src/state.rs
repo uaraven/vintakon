@@ -29,6 +29,10 @@ pub(crate) struct AppState {
     pub selected_profile_index: State<Option<usize>>,
     /// Text of the exiftool path input in the settings dialog
     pub exiftool_text: State<String>,
+    /// Bumped when a profile is deleted, so the editor fields do not keep the text of the removed profile
+    pub profile_generation: State<u32>,
+    /// Message of the error dialog, if it is shown
+    pub error_message: State<Option<String>>,
 }
 
 impl AppState {
@@ -52,6 +56,8 @@ impl AppState {
             }),
             selected_profile_index: use_state(|| None),
             exiftool_text: use_state(String::new),
+            profile_generation: use_state(|| 0),
+            error_message: use_state(|| None),
         }
     }
 
@@ -94,9 +100,7 @@ impl AppState {
         // Not tied to the caller's scope: the File menu item that triggers this is unmounted on press
         spawn_forever(async move {
             if let Some(folder) = logic::select_folder().await {
-                let mut this = self;
-                this.is_loading.set(true);
-                this.reload(folder).await;
+                self.reload(folder).await;
             }
         });
     }
@@ -112,14 +116,13 @@ impl AppState {
         };
         // Not tied to the caller's scope: the File menu item that triggers this is unmounted on press
         spawn_forever(async move {
-            let mut this = self;
-            this.is_loading.set(true);
-            this.reload(folder).await;
+            self.reload(folder).await;
         });
     }
 
     /// Reads folder content and replaces the image list
     async fn reload(mut self, folder: String) {
+        self.is_loading.set(true);
         let images = logic::load_images(folder.clone(), self.exiftool_path()).await;
         self.images.set(images);
         self.path.set(Some(folder));
@@ -144,13 +147,16 @@ impl AppState {
         let Some(profile) = self.find_profile_by_name(&profile_name) else {
             return;
         };
-        let selected: Vec<FileRec> = self
+        let selected: Vec<String> = self
             .images
             .read()
             .iter()
             .filter(|img| img.is_selected())
-            .cloned()
+            .map(|img| img.exif_info().file_path.clone())
             .collect();
+        if selected.is_empty() {
+            return;
+        }
         let aperture = self.apply_aperture.read().clone();
         let focal_length = self.apply_focal_length.read().clone();
         let exiftool = self.exiftool_path();
@@ -160,7 +166,7 @@ impl AppState {
         // right before, which would cancel the task and leave `is_applying` set forever
         spawn_forever(async move {
             let mut this = self;
-            logic::apply_profile_to_images(
+            let result = logic::apply_profile_to_images(
                 working_dir.clone(),
                 profile,
                 aperture,
@@ -169,7 +175,11 @@ impl AppState {
                 exiftool,
             )
             .await;
+            // `reload` shows its own busy dialog right away, so the UI is never left idle in between
             this.is_applying.set(false);
+            if let Err(message) = result {
+                this.error_message.set(Some(message));
+            }
             this.reload(working_dir).await;
         });
     }
@@ -197,7 +207,12 @@ impl AppState {
 
     pub fn save_settings(mut self) {
         let new_config = self.temp_config.read().clone();
-        let _ = new_config.save();
+        if let Err(e) = new_config.save() {
+            // Keep the dialog open so the edited profiles are not lost
+            self.error_message
+                .set(Some(format!("Failed to save the settings: {e}")));
+            return;
+        }
         self.config.set(new_config);
         // Drop the selection if the selected profile does not exist any more
         let selected = self.selected_profile.read().clone();
@@ -236,6 +251,7 @@ impl AppState {
             config.lens_profiles.remove(index);
             config.lens_profiles.len()
         };
+        *self.profile_generation.write() += 1;
         let selected = *self.selected_profile_index.read();
         if let Some(selected) = selected {
             if selected == index {

@@ -3,9 +3,13 @@
 use freya::{elements::image::ImageHandle, engine::prelude::AlphaType, prelude::*};
 
 use super::widgets::{
-    PRIMARY, centered, colors, divider, icon, icon_button, menu_label, text, with_shortcut,
+    PRIMARY, button, card, centered, colors, divider, icon, icon_button, menu_label, text,
 };
-use crate::{exif::exif::ExifInfo, resources::resources, state::AppState};
+use crate::{
+    exif::{exiftool::load_plain_image, info::ExifInfo},
+    resources,
+    state::AppState,
+};
 
 const TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
@@ -25,19 +29,25 @@ impl Component for MainView {
         };
 
         let on_key = move |e: Event<KeyboardEventData>| {
-            // Ctrl (Cmd on macOS) shortcuts. The main screen is inactive while settings are open.
+            // Ctrl (Cmd on macOS) shortcuts. The main screen is inactive while a dialog is open.
             let modifier =
                 e.modifiers.contains(Modifiers::CONTROL) || e.modifiers.contains(Modifiers::META);
             if !modifier
                 || *state.show_settings.read()
                 || *state.is_applying.read()
                 || *state.is_loading.read()
+                || state.error_message.read().is_some()
             {
                 return;
             }
+            let apply_dialog_open = *state.show_apply.read();
             match &e.key {
-                Key::Character(c) if c.eq_ignore_ascii_case("o") => state.select_folder(),
-                Key::Character(c) if c.eq_ignore_ascii_case("r") => state.reload_folder(),
+                Key::Character(c) if c.eq_ignore_ascii_case("o") && !apply_dialog_open => {
+                    state.select_folder()
+                }
+                Key::Character(c) if c.eq_ignore_ascii_case("r") && !apply_dialog_open => {
+                    state.reload_folder()
+                }
                 Key::Character(c) if c.eq_ignore_ascii_case("q") => std::process::exit(0),
                 Key::Named(NamedKey::Enter) => {
                     let mut show = state.show_apply;
@@ -90,7 +100,7 @@ impl Component for MenuBar {
         let can_reload = state.is_folder_selected();
 
         let menu = show_menu().then(|| {
-            let reload_label = menu_label(with_shortcut("Reload", "R"), can_reload);
+            let reload_label = menu_label("Reload", Some("R"), can_reload);
             rect()
                 .position(Position::new_absolute().top(32.).left(0.))
                 .child(
@@ -98,7 +108,7 @@ impl Component for MenuBar {
                         .on_close(move |_| show_menu.set(false))
                         .child(
                             MenuButton::new()
-                                .child(menu_label(with_shortcut("Open Folder...", "O"), true))
+                                .child(menu_label("Open Folder...", Some("O"), true))
                                 .on_press(move |_| {
                                     show_menu.set(false);
                                     state.select_folder();
@@ -112,7 +122,7 @@ impl Component for MenuBar {
                         }))
                         .child(
                             MenuButton::new()
-                                .child(menu_label("Settings...".to_string(), true))
+                                .child(menu_label("Settings...", None, true))
                                 .on_press(move |_| {
                                     show_menu.set(false);
                                     state.open_settings();
@@ -120,7 +130,7 @@ impl Component for MenuBar {
                         )
                         .child(
                             MenuButton::new()
-                                .child(menu_label(with_shortcut("Exit", "Q"), true))
+                                .child(menu_label("Exit", Some("Q"), true))
                                 .on_press(move |_| std::process::exit(0)),
                         ),
                 )
@@ -130,10 +140,7 @@ impl Component for MenuBar {
         let can_apply = state.is_any_file_checked();
 
         let edit_menu = show_edit().then(|| {
-            let label = menu_label(
-                with_shortcut("Select and apply profile...", "Enter"),
-                can_apply,
-            );
+            let label = menu_label("Select and apply profile...", Some("Enter"), can_apply);
             rect()
                 .position(Position::new_absolute().top(32.).left(0.))
                 .child(Menu::new().on_close(move |_| show_edit.set(false)).child(
@@ -399,11 +406,20 @@ impl Component for Preview {
     fn render(&self) -> impl IntoElement {
         let state = use_consume::<AppState>();
 
-        // Convert the preview only when the selection changes
+        // Convert the preview only when the selection changes: the images are only peeked,
+        // otherwise every checkbox toggle would convert the preview again
         let preview = use_memo(move || {
             let index = (*state.selected_file_index.read())?;
-            let images = state.images.read();
-            let preview_img = images.get(index)?.exif_info().preview_image.as_ref()?;
+            let images = state.images.peek();
+            let exif_info = images.get(index)?.exif_info();
+            let plain_image;
+            let preview_img = match exif_info.preview_image.as_ref() {
+                Some(preview_img) => preview_img,
+                None => {
+                    plain_image = load_plain_image(&exif_info.file_path)?;
+                    &plain_image
+                }
+            };
             ImageHandle::from_rgba(
                 preview_img.width(),
                 preview_img.height(),
@@ -453,21 +469,6 @@ impl Component for Preview {
             )
             .into_element()
     }
-}
-
-/// A rounded panel with a title and a content area
-fn card(title: String, content: impl IntoElement) -> impl IntoElement {
-    rect()
-        .width(Size::fill())
-        .vertical()
-        .padding(15.)
-        .spacing(12.)
-        .background(colors().surface_secondary)
-        .corner_radius(8.)
-        .border(Border::new().fill(colors().border).width(1.))
-        .child(text(title, 16.))
-        .child(divider(1.))
-        .child(content)
 }
 
 /// Table of the EXIF tags and their values that spans the whole width of the card
@@ -619,8 +620,7 @@ impl Component for ApplyDialog {
                         PopupButtons::new()
                             .child(Button::new().on_press(move |_| close()).child("Cancel"))
                             .child(
-                                Button::new()
-                                    .enabled(state.selected_profile.read().is_some())
+                                button(state.selected_profile.read().is_some())
                                     .on_press(move |_| {
                                         close();
                                         state.apply_profile();

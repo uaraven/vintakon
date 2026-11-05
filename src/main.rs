@@ -1,6 +1,6 @@
 use freya::prelude::*;
 
-use crate::resources::resources::APP_ICON;
+use crate::resources::APP_ICON;
 
 mod exif;
 mod logic;

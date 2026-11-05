@@ -214,7 +214,7 @@ cargo clippy
   - **`file_rec.rs`**: File record wrapper around EXIF data with selection state
 - **`exif/`**: EXIF data processing and lens information parsing
   - **`exiftool.rs`**: Interface to `exiftool` command-line utility, handles JSON parsing and image preview extraction
-  - **`exif.rs`**: Core EXIF data structures including `ExifInfo` and `LensInfo` enums (Prime vs Zoom lenses)
+  - **`info.rs`**: Core EXIF data structures including `ExifInfo` and `LensInfo` enums (Prime vs Zoom lenses)
 - **`resources.rs`**: Embedded application resources (app icon)
 
 ### Key Data Flow

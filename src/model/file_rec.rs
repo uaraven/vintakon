@@ -1,13 +1,13 @@
-use crate::exif::exif;
+use crate::exif::info;
 
 #[derive(Debug, Clone)]
 pub(crate) struct FileRec {
-    exif_info: exif::ExifInfo,
+    exif_info: info::ExifInfo,
     selected: bool,
 }
 
 impl FileRec {
-    pub fn new(exif_info: exif::ExifInfo) -> Self {
+    pub fn new(exif_info: info::ExifInfo) -> Self {
         Self {
             exif_info,
             selected: false,
@@ -39,7 +39,7 @@ impl FileRec {
         &self.exif_info.mod_time
     }
 
-    pub fn exif_info(&self) -> &crate::exif::exif::ExifInfo {
+    pub fn exif_info(&self) -> &crate::exif::info::ExifInfo {
         &self.exif_info
     }
 }

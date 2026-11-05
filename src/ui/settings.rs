@@ -2,11 +2,11 @@
 
 use freya::prelude::*;
 
-use super::widgets::{PRIMARY, centered, colors, divider, icon, icon_button, text};
+use super::widgets::{PRIMARY, card, colors, divider, icon, icon_button, text};
 use crate::{
     logic::{is_focal_length_valid, is_valid_floating_point},
     model::lens_profile::LensProfile,
-    resources::resources,
+    resources,
     state::AppState,
 };
 
@@ -175,25 +175,23 @@ impl Component for ProfileList {
                 },
             ));
 
-        rect()
-            .expanded()
-            .vertical()
-            .content(Content::flex())
-            .spacing(10.)
-            .child(
-                ScrollView::new()
-                    .width(Size::fill())
-                    .height(Size::flex(1.))
-                    .child(
-                        rect()
-                            .width(Size::fill())
-                            .spacing(10.)
-                            .child(text("Lens Profiles", 18.))
-                            .child(divider(2.))
-                            .children(items),
-                    ),
-            )
-            .child(buttons)
+        card(
+            "Lens Profiles".to_string(),
+            rect()
+                .width(Size::fill())
+                .height(Size::flex(1.))
+                .vertical()
+                .content(Content::flex())
+                .spacing(10.)
+                .child(
+                    ScrollView::new()
+                        .width(Size::fill())
+                        .height(Size::flex(1.))
+                        .child(rect().width(Size::fill()).spacing(10.).children(items)),
+                )
+                .child(buttons),
+        )
+        .height(Size::fill())
     }
 }
 
@@ -205,13 +203,14 @@ impl Component for ProfileEditor {
         let state = use_consume::<AppState>();
 
         let Some(index) = *state.selected_profile_index.read() else {
-            return centered(text("Select a profile to edit", 16.)).into_element();
+            return placeholder("Select a profile to edit");
         };
         let Some(profile) = state.temp_config.read().lens_profiles.get(index).cloned() else {
-            return centered(text("Invalid profile selection", 16.)).into_element();
+            return placeholder("Invalid profile selection");
         };
 
         // Fields keep the text being typed, so they are created anew for every profile
+        let generation = *state.profile_generation.read();
         let field = |kind: Field, placeholder: &'static str| -> Element {
             ProfileField {
                 index,
@@ -220,7 +219,7 @@ impl Component for ProfileEditor {
                 initial: kind.initial_value(&profile),
                 key: DiffKey::None,
             }
-            .key((index, kind))
+            .key((generation, index, kind))
             .into()
         };
         let labeled = |caption: &'static str, input: Element| {
@@ -248,51 +247,66 @@ impl Component for ProfileEditor {
                 )
         };
 
-        ScrollView::new()
+        let form = rect()
             .width(Size::fill())
-            .height(Size::fill())
+            .spacing(15.)
+            .child(labeled("Name:", field(Field::Name, "Profile name")))
             .child(
                 rect()
                     .width(Size::fill())
-                    .padding(10.)
-                    .spacing(15.)
-                    .child(text("Profile Editor", 18.))
-                    .child(divider(2.))
-                    .child(labeled("Name:", field(Field::Name, "Profile name")))
+                    .horizontal()
+                    .content(Content::flex())
+                    .spacing(10.)
                     .child(
                         rect()
-                            .width(Size::fill())
-                            .horizontal()
-                            .content(Content::flex())
-                            .spacing(10.)
-                            .child(
-                                rect()
-                                    .width(Size::flex(1.))
-                                    .child(labeled("Make:", field(Field::Make, "Lens make"))),
-                            )
-                            .child(
-                                rect()
-                                    .width(Size::flex(1.))
-                                    .child(labeled("Model:", field(Field::Model, "Lens model"))),
-                            ),
+                            .width(Size::flex(1.))
+                            .child(labeled("Make:", field(Field::Make, "Lens make"))),
                     )
-                    .child(range(
-                        "Focal Length Range",
-                        field(Field::MinFocal, "Min"),
-                        field(Field::MaxFocal, "Max"),
-                    ))
-                    .child(range(
-                        "Max aperture range",
-                        field(Field::MinAperture, "Min aperture"),
-                        field(Field::MaxAperture, "Max aperture"),
-                    ))
-                    .child(labeled(
-                        "Crop Factor:",
-                        field(Field::CropFactor, "Crop factor"),
-                    )),
+                    .child(
+                        rect()
+                            .width(Size::flex(1.))
+                            .child(labeled("Model:", field(Field::Model, "Lens model"))),
+                    ),
             )
-            .into_element()
+            .child(range(
+                "Focal Length Range",
+                field(Field::MinFocal, "Min"),
+                field(Field::MaxFocal, "Max"),
+            ))
+            .child(range(
+                "Max aperture range",
+                field(Field::MinAperture, "Min aperture"),
+                field(Field::MaxAperture, "Max aperture"),
+            ))
+            .child(labeled(
+                "Crop Factor:",
+                field(Field::CropFactor, "Crop factor"),
+            ));
+
+        card(
+            "Profile Editor".to_string(),
+            ScrollView::new()
+                .width(Size::fill())
+                .height(Size::flex(1.))
+                .child(form),
+        )
+        .height(Size::fill())
+        .into_element()
     }
+}
+
+/// Editor card that tells why there is nothing to edit
+fn placeholder(message: &'static str) -> Element {
+    card(
+        "Profile Editor".to_string(),
+        rect()
+            .width(Size::fill())
+            .height(Size::flex(1.))
+            .center()
+            .child(text(message, 16.)),
+    )
+    .height(Size::fill())
+    .into_element()
 }
 
 #[derive(Clone, Copy, PartialEq, Hash)]
