@@ -29,6 +29,8 @@ pub(crate) struct AppState {
     pub show_settings: State<bool>,
     /// Whether the "Apply profile" dialog is open
     pub show_apply: State<bool>,
+    /// Whether the "About" dialog is open
+    pub show_about: State<bool>,
     /// Message of the error dialog, if it is shown
     pub error_message: State<Option<String>>,
 }
@@ -51,6 +53,7 @@ impl AppState {
             apply_focal_length: use_state(String::new),
             show_settings: use_state(|| false),
             show_apply: use_state(|| false),
+            show_about: use_state(|| false),
             error_message: use_state(|| startup.1.clone()),
         }
     }
@@ -222,6 +225,14 @@ impl AppState {
             }
             this.reload(working_dir).await;
         });
+    }
+
+    pub fn open_about(mut self) {
+        self.show_about.set(true);
+    }
+
+    pub fn close_about(mut self) {
+        self.show_about.set(false);
     }
 
     // ---- settings ----

@@ -1,3 +1,4 @@
+mod about;
 mod main_view;
 mod settings;
 mod widgets;

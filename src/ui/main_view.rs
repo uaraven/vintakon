@@ -2,6 +2,7 @@
 
 use freya::{elements::image::ImageHandle, engine::prelude::AlphaType, prelude::*};
 
+use super::about::AboutDialog;
 use super::widgets::{
     PRIMARY, button, card, centered, colors, divider, icon, icon_button, menu_label, panel, text,
 };
@@ -20,6 +21,7 @@ impl Component for MainView {
     fn render(&self) -> impl IntoElement {
         let state = use_consume::<AppState>();
         let show_apply = *state.show_apply.read();
+        let show_about = *state.show_about.read();
         let busy_message = if *state.is_applying.read() {
             Some("Applying lens profile...")
         } else if *state.is_loading.read() {
@@ -36,6 +38,7 @@ impl Component for MainView {
                 || *state.show_settings.read()
                 || *state.is_applying.read()
                 || *state.is_loading.read()
+                || *state.show_about.read()
                 || state.error_message.read().is_some()
             {
                 return;
@@ -69,6 +72,7 @@ impl Component for MainView {
             .child(Header)
             .child(ContentPane)
             .maybe_child(show_apply.then(|| ApplyDialog.into_element()))
+            .maybe_child(show_about.then(|| AboutDialog.into_element()))
             .maybe_child(busy_message.map(|message| BusyDialog(message).into_element()))
     }
 }
@@ -92,6 +96,7 @@ impl Component for MenuBar {
         let state = use_consume::<AppState>();
         let show_file = use_state(|| false);
         let show_edit = use_state(|| false);
+        let show_help = use_state(|| false);
 
         let can_reload = state.is_folder_selected();
         let can_apply = state.is_any_file_checked();
@@ -139,12 +144,40 @@ impl Component for MenuBar {
             )
         });
 
+        let help_menu = show_help().then(|| {
+            dropdown(
+                Menu::new()
+                    .on_close(move |_| close(show_help))
+                    .child(menu_item(
+                        show_help,
+                        menu_label("About Vintakon", None, true),
+                        move || state.open_about(),
+                    )),
+            )
+        });
+
         rect()
             .width(Size::fill())
             .horizontal()
             .padding(2.)
-            .child(menu_title("File", show_file, show_edit, file_menu))
-            .child(menu_title("Edit", show_edit, show_file, edit_menu))
+            .child(menu_title(
+                "File",
+                show_file,
+                [show_edit, show_help],
+                file_menu,
+            ))
+            .child(menu_title(
+                "Edit",
+                show_edit,
+                [show_file, show_help],
+                edit_menu,
+            ))
+            .child(menu_title(
+                "Help",
+                show_help,
+                [show_file, show_edit],
+                help_menu,
+            ))
     }
 }
 
@@ -172,7 +205,7 @@ fn menu_item(menu_open: State<bool>, label: Rect, action: impl Fn() + 'static) -
 fn menu_title(
     title: &'static str,
     mut open: State<bool>,
-    other: State<bool>,
+    others: [State<bool>; 2],
     menu: Option<Rect>,
 ) -> Rect {
     rect()
@@ -180,7 +213,7 @@ fn menu_title(
             Button::new()
                 .flat()
                 .on_press(move |_| {
-                    close(other);
+                    others.into_iter().for_each(close);
                     open.toggle();
                 })
                 .child(title),
