@@ -101,6 +101,23 @@ impl AppState {
         });
     }
 
+    pub fn is_folder_selected(&self) -> bool {
+        self.path.read().is_some()
+    }
+
+    /// Re-reads the currently selected folder. Does nothing if there is no folder
+    pub fn reload_folder(self) {
+        let Some(folder) = self.path.read().clone() else {
+            return;
+        };
+        // Not tied to the caller's scope: the File menu item that triggers this is unmounted on press
+        spawn_forever(async move {
+            let mut this = self;
+            this.is_loading.set(true);
+            this.reload(folder).await;
+        });
+    }
+
     /// Reads folder content and replaces the image list
     async fn reload(mut self, folder: String) {
         let images = logic::load_images(folder.clone(), self.exiftool_path()).await;
@@ -139,7 +156,9 @@ impl AppState {
         let exiftool = self.exiftool_path();
 
         self.is_applying.set(true);
-        spawn(async move {
+        // Not tied to the caller's scope: the Apply dialog that triggers this is closed (unmounted)
+        // right before, which would cancel the task and leave `is_applying` set forever
+        spawn_forever(async move {
             let mut this = self;
             logic::apply_profile_to_images(
                 working_dir.clone(),

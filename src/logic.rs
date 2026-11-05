@@ -88,7 +88,11 @@ pub(crate) async fn apply_profile_to_images(
 
     let changes = ExifChanges::new(&profile, actual_focal_length, actual_aperture);
 
-    apply_profile(exiftool, root_path.as_str(), selected_files, changes).await;
+    // exiftool blocks until it is done, so keep it off the UI thread
+    let _ = tokio::task::spawn_blocking(move || {
+        apply_profile(exiftool, root_path.as_str(), selected_files, changes)
+    })
+    .await;
 }
 
 #[cfg(test)]

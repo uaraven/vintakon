@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/ovoronin/.cargo/registry/src/**)",
+      "Read(//Users/ovoronin/**)",
+      "Read(//Users/ovoronin/freya-core-0.4.3/src/elements/**)",
+      "Bash(cd ~/.cargo/registry/src/*/ && grep -n \"pub fn \" torin-*/src/size.rs | head -30; grep -n \"fn width\\\\|fn height\\\\|fn expanded\" freya-components-0.4.3/src/popup.rs freya-components-0.4.3/src/theming/*.rs 2>/dev/null | head)",
+      "Bash(cd ~/.cargo/registry/src/*/torin-0.4.3/src && grep -n \"Fill\\\\b\\\\|FillMinimum\\\\|Flex\\\\|WindowPercentage\\\\|Percentage\" size.rs | head -40; grep -n \"define_theme\" -A60 ../../freya-components-0.4.3/src/theming/macros.rs | grep -n \"fn \\\\|pub fn\" | head)",
+      "Read(//Users/ovoronin/freya-components-0.4.3/src/theming/**)",
+      "Bash(cd ~/.cargo/registry/src/*/torin-0.4.3/src && grep -rn \"Fill\" --include=*.rs . | head -30)"
+    ]
+  }
+}

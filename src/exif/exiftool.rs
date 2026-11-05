@@ -201,7 +201,8 @@ fn load_plain_image(file_path: &str) -> Option<image::DynamicImage> {
     Some(img.thumbnail(1600, 1600))
 }
 
-pub async fn apply_profile(
+/// Writes the changes to the files. Blocks while exiftool is running
+pub fn apply_profile(
     exiftool_program: Option<String>,
     dir: &str,
     file_names: Vec<String>,

@@ -2,7 +2,9 @@
 
 use freya::{elements::image::ImageHandle, engine::prelude::AlphaType, prelude::*};
 
-use super::widgets::{PRIMARY, centered, colors, divider, icon, icon_button, text};
+use super::widgets::{
+    PRIMARY, centered, colors, divider, icon, icon_button, menu_label, text, with_shortcut,
+};
 use crate::{exif::exif::ExifInfo, resources::resources, state::AppState};
 
 const TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
@@ -14,16 +16,28 @@ impl Component for MainView {
     fn render(&self) -> impl IntoElement {
         let state = use_consume::<AppState>();
         let show_apply = *state.show_apply.read();
+        let busy_message = if *state.is_applying.read() {
+            Some("Applying lens profile...")
+        } else if *state.is_loading.read() {
+            Some("Scanning folder...")
+        } else {
+            None
+        };
 
         let on_key = move |e: Event<KeyboardEventData>| {
             // Ctrl (Cmd on macOS) shortcuts. The main screen is inactive while settings are open.
             let modifier =
                 e.modifiers.contains(Modifiers::CONTROL) || e.modifiers.contains(Modifiers::META);
-            if !modifier || *state.show_settings.read() {
+            if !modifier
+                || *state.show_settings.read()
+                || *state.is_applying.read()
+                || *state.is_loading.read()
+            {
                 return;
             }
             match &e.key {
                 Key::Character(c) if c.eq_ignore_ascii_case("o") => state.select_folder(),
+                Key::Character(c) if c.eq_ignore_ascii_case("r") => state.reload_folder(),
                 Key::Character(c) if c.eq_ignore_ascii_case("q") => std::process::exit(0),
                 Key::Named(NamedKey::Enter) => {
                     let mut show = state.show_apply;
@@ -50,6 +64,17 @@ impl Component for MainView {
             .child(Header)
             .child(ContentPane)
             .maybe_child(show_apply.then(|| ApplyDialog.into_element()))
+            .maybe_child(busy_message.map(|message| BusyDialog(message).into_element()))
+    }
+}
+
+/// Small dialog without title and buttons that blocks the main view while a long operation runs
+#[derive(PartialEq)]
+struct BusyDialog(&'static str);
+
+impl Component for BusyDialog {
+    fn render(&self) -> impl IntoElement {
+        Popup::new().child(rect().padding(24.).child(text(self.0, 16.)))
     }
 }
 
@@ -62,7 +87,10 @@ impl Component for MenuBar {
         let state = use_consume::<AppState>();
         let mut show_menu = use_state(|| false);
 
+        let can_reload = state.is_folder_selected();
+
         let menu = show_menu().then(|| {
+            let reload_label = menu_label(with_shortcut("Reload", "R"), can_reload);
             rect()
                 .position(Position::new_absolute().top(32.).left(0.))
                 .child(
@@ -70,19 +98,29 @@ impl Component for MenuBar {
                         .on_close(move |_| show_menu.set(false))
                         .child(
                             MenuButton::new()
-                                .child("Open Folder...    Ctrl+O")
+                                .child(menu_label(with_shortcut("Open Folder...", "O"), true))
                                 .on_press(move |_| {
                                     show_menu.set(false);
                                     state.select_folder();
                                 }),
                         )
-                        .child(MenuButton::new().child("Settings...").on_press(move |_| {
+                        .child(MenuButton::new().child(reload_label).on_press(move |_| {
                             show_menu.set(false);
-                            state.open_settings();
+                            if can_reload {
+                                state.reload_folder();
+                            }
                         }))
                         .child(
                             MenuButton::new()
-                                .child("Exit    Ctrl+Q")
+                                .child(menu_label("Settings...".to_string(), true))
+                                .on_press(move |_| {
+                                    show_menu.set(false);
+                                    state.open_settings();
+                                }),
+                        )
+                        .child(
+                            MenuButton::new()
+                                .child(menu_label(with_shortcut("Exit", "Q"), true))
                                 .on_press(move |_| std::process::exit(0)),
                         ),
                 )
@@ -92,13 +130,10 @@ impl Component for MenuBar {
         let can_apply = state.is_any_file_checked();
 
         let edit_menu = show_edit().then(|| {
-            // MenuButton has no disabled state: dim the text and ignore the press instead
-            let label =
-                text("Select and apply profile...    Ctrl+Enter", 14.).color(if can_apply {
-                    colors().text_primary
-                } else {
-                    colors().text_secondary
-                });
+            let label = menu_label(
+                with_shortcut("Select and apply profile...", "Enter"),
+                can_apply,
+            );
             rect()
                 .position(Position::new_absolute().top(32.).left(0.))
                 .child(Menu::new().on_close(move |_| show_edit.set(false)).child(
@@ -212,7 +247,6 @@ impl Component for Header {
 }
 
 /// Left side contains a list of images, the right side contains their EXIF information and a preview.
-/// When loading or applying a lens profile, the whole content is replaced with an indicator text.
 #[derive(PartialEq)]
 struct ContentPane;
 
@@ -225,11 +259,7 @@ impl Component for ContentPane {
             .height(Size::flex(1.))
             .horizontal();
 
-        if *state.is_applying.read() {
-            pane.child(centered(text("Applying lens profile...", 16.)))
-        } else if *state.is_loading.read() {
-            pane.child(centered(text("Scanning folder...", 16.)))
-        } else if state.images.read().is_empty() {
+        if state.images.read().is_empty() {
             pane.child(centered(text(
                 "No images loaded. Select a folder to get started.",
                 14.,
@@ -504,6 +534,9 @@ fn metadata(exif_info: &ExifInfo) -> impl IntoElement {
         .into_element()
 }
 
+/// Height of the apply profile dialog
+const APPLY_DIALOG_HEIGHT: f32 = 300.;
+
 /// Modal dialog with the lens profile selection and the actual aperture / focal length
 #[derive(PartialEq)]
 struct ApplyDialog;
@@ -559,30 +592,41 @@ impl Component for ApplyDialog {
             show.set(false);
         };
 
+        let body = rect()
+            .width(Size::fill())
+            .height(Size::flex(1.))
+            .padding(8.)
+            .spacing(12.)
+            .vertical()
+            .child(labeled("Profile:", profile_select.into()))
+            .child(labeled("Actual Aperture:", aperture.into()))
+            .child(labeled("Actual Focal Length:", focal_length.into()));
+
+        // 60% of the window width, fixed height
         Popup::new()
+            .width(Size::window_percent(60.))
+            .height(Size::px(APPLY_DIALOG_HEIGHT))
             .on_close_request(move |_| close())
-            .child(PopupTitle::new("Apply profile".to_string()))
             .child(
-                PopupContent::new().child(
-                    rect()
-                        .width(Size::px(480.))
-                        .spacing(12.)
-                        .child(labeled("Profile:", profile_select.into()))
-                        .child(labeled("Actual Aperture:", aperture.into()))
-                        .child(labeled("Actual Focal Length:", focal_length.into())),
-                ),
-            )
-            .child(
-                PopupButtons::new()
-                    .child(Button::new().on_press(move |_| close()).child("Cancel"))
+                rect()
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .vertical()
+                    .content(Content::flex())
+                    .child(PopupTitle::new("Apply profile".to_string()))
+                    .child(body)
                     .child(
-                        Button::new()
-                            .enabled(state.selected_profile.read().is_some())
-                            .on_press(move |_| {
-                                close();
-                                state.apply_profile();
-                            })
-                            .child("Apply"),
+                        PopupButtons::new()
+                            .child(Button::new().on_press(move |_| close()).child("Cancel"))
+                            .child(
+                                Button::new()
+                                    .enabled(state.selected_profile.read().is_some())
+                                    .on_press(move |_| {
+                                        close();
+                                        state.apply_profile();
+                                    })
+                                    .child("Apply"),
+                            ),
                     ),
             )
     }

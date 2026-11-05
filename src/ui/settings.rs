@@ -70,31 +70,41 @@ impl Component for SettingsDialog {
             );
 
         let body = rect()
-            .width(Size::px(828.))
-            .height(Size::px(520.))
+            .width(Size::fill())
+            .height(Size::flex(1.))
+            .padding(8.)
             .vertical()
             .content(Content::flex())
             .child(exiftool_path)
             .child(divider(1.))
             .child(profiles);
 
+        // The popup takes 90% of the window, its content is a flex column so that
+        // the body gets all the space left between the title and the buttons
         Popup::new()
-            // dialog width = content width + popup padding (2x8) + content padding (2x8)
-            .width(Size::px(860.))
+            .width(Size::window_percent(90.))
+            .height(Size::window_percent(90.))
             .on_close_request(move |_| state.close_settings())
-            .child(PopupTitle::new("Settings".to_string()))
-            .child(PopupContent::new().child(body))
             .child(
-                PopupButtons::new()
+                rect()
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .vertical()
+                    .content(Content::flex())
+                    .child(PopupTitle::new("Settings".to_string()))
+                    .child(body)
                     .child(
-                        Button::new()
-                            .on_press(move |_| state.close_settings())
-                            .child("Cancel"),
-                    )
-                    .child(
-                        Button::new()
-                            .on_press(move |_| state.save_settings())
-                            .child("Ok"),
+                        PopupButtons::new()
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| state.close_settings())
+                                    .child("Cancel"),
+                            )
+                            .child(
+                                Button::new()
+                                    .on_press(move |_| state.save_settings())
+                                    .child("Ok"),
+                            ),
                     ),
             )
     }
@@ -123,7 +133,7 @@ impl Component for ProfileList {
                 .child(
                     rect()
                         .width(Size::fill())
-                        .padding(2.)
+                        .padding(12.)
                         .background(if is_selected {
                             PRIMARY.into()
                         } else {

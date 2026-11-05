@@ -124,3 +124,24 @@ pub fn icon_button(
 pub fn centered(child: impl IntoElement) -> impl IntoElement {
     rect().expanded().center().child(child)
 }
+
+/// Menu item caption with its keyboard shortcut. The modifier is Cmd on macOS and Ctrl elsewhere
+pub fn with_shortcut(caption: &str, key: &str) -> String {
+    let modifier = if cfg!(target_os = "macos") {
+        "Cmd"
+    } else {
+        "Ctrl"
+    };
+    format!("{caption}    {modifier}+{key}")
+}
+
+/// Content of a menu item. It keeps the default font size and color of the menu, so all the items
+/// look the same; disabled items are dimmed (`MenuButton` has no disabled state of its own)
+pub fn menu_label(caption: String, enabled: bool) -> Label {
+    let item = label().text(caption);
+    if enabled {
+        item
+    } else {
+        item.color(colors().text_secondary)
+    }
+}
