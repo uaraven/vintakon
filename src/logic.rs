@@ -1,9 +1,6 @@
 //! UI-framework independent helpers: input validation, file dialogs and
 //! the long-running exiftool operations.
 
-use std::sync::LazyLock;
-
-use regex::Regex;
 use rfd::AsyncFileDialog;
 
 use crate::{
@@ -14,33 +11,34 @@ use crate::{
     model::{file_rec::FileRec, lens_profile::LensProfile},
 };
 
-static APERTURE_VALIDATOR: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(\d+(\.\d*)?)?$").unwrap());
-static FL_VALIDATOR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d*$").unwrap());
-
-/// Checks if aperture/crop factor text is matching `^(\d+(\.\d*)?)?$`
+/// Checks if aperture/crop factor text is a number with an optional fractional part
+/// (e.g. `1.8`, `22`, `5.`), or is empty
 pub(crate) fn is_valid_floating_point(text: &str) -> bool {
-    APERTURE_VALIDATOR.is_match(text)
+    let (integer, fraction) = match text.split_once('.') {
+        Some((integer, fraction)) => (integer, Some(fraction)),
+        None => (text, None),
+    };
+    let is_digits = |part: &str| part.bytes().all(|b| b.is_ascii_digit());
+    text.is_empty() || (!integer.is_empty() && is_digits(integer) && fraction.is_none_or(is_digits))
 }
 
 /// Checks if focal length text contains digits only
 pub(crate) fn is_focal_length_valid(text: &str) -> bool {
-    FL_VALIDATOR.is_match(text)
+    text.bytes().all(|b| b.is_ascii_digit())
 }
 
 /// Reads exif info for all supported files in the folder.
 ///
 /// `read_files` blocks while exiftool is running, so it is moved to a blocking thread.
-pub(crate) async fn load_images(new_path: String, exiftool: Option<String>) -> Vec<FileRec> {
-    let path = new_path.clone();
+pub(crate) async fn load_images(
+    new_path: String,
+    exiftool: Option<String>,
+) -> Result<Vec<FileRec>, String> {
     tokio::task::spawn_blocking(move || {
-        read_files(&path, exiftool)
-            .into_iter()
-            .map(FileRec::new)
-            .collect()
+        read_files(&new_path, exiftool).map(|infos| infos.into_iter().map(FileRec::new).collect())
     })
     .await
-    .unwrap_or_default()
+    .map_err(|e| format!("Scanning the folder was interrupted: {e}"))?
 }
 
 /// Shows a folder selection dialog. Returns `None` if the dialog was cancelled
@@ -71,11 +69,7 @@ pub(crate) async fn apply_profile_to_images(
     selected_files: Vec<String>,
     exiftool: Option<String>,
 ) -> Result<(), String> {
-    let actual_aperture = if !aperture.is_empty() {
-        Some(aperture)
-    } else {
-        None
-    };
+    let actual_aperture = (!aperture.is_empty()).then_some(aperture);
 
     // The input is validated to contain digits only, so parsing can only fail on overflow
     let actual_focal_length: Option<f32> = focal_length.parse().ok();

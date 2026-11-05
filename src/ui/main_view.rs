@@ -6,7 +6,7 @@ use super::widgets::{
     PRIMARY, button, card, centered, colors, divider, icon, icon_button, menu_label, text,
 };
 use crate::{
-    exif::{exiftool::load_plain_image, info::ExifInfo},
+    exif::{exiftool::decode_preview, info::ExifInfo},
     resources,
     state::AppState,
 };
@@ -50,15 +50,10 @@ impl Component for MainView {
                 }
                 Key::Character(c) if c.eq_ignore_ascii_case("q") => std::process::exit(0),
                 Key::Named(NamedKey::Enter) => {
-                    let mut show = state.show_apply;
-                    if *show.read() {
-                        // The dialog is open: confirm it
-                        if state.selected_profile.read().is_some() {
-                            show.set(false);
-                            state.apply_profile();
-                        }
-                    } else if state.is_any_file_checked() {
-                        show.set(true);
+                    if apply_dialog_open {
+                        state.confirm_apply();
+                    } else {
+                        state.open_apply();
                     }
                 }
                 _ => {}
@@ -95,96 +90,102 @@ struct MenuBar;
 impl Component for MenuBar {
     fn render(&self) -> impl IntoElement {
         let state = use_consume::<AppState>();
-        let mut show_menu = use_state(|| false);
+        let show_file = use_state(|| false);
+        let show_edit = use_state(|| false);
 
         let can_reload = state.is_folder_selected();
+        let can_apply = state.is_any_file_checked();
 
-        let menu = show_menu().then(|| {
-            let reload_label = menu_label("Reload", Some("R"), can_reload);
-            rect()
-                .position(Position::new_absolute().top(32.).left(0.))
-                .child(
-                    Menu::new()
-                        .on_close(move |_| show_menu.set(false))
-                        .child(
-                            MenuButton::new()
-                                .child(menu_label("Open Folder...", Some("O"), true))
-                                .on_press(move |_| {
-                                    show_menu.set(false);
-                                    state.select_folder();
-                                }),
-                        )
-                        .child(MenuButton::new().child(reload_label).on_press(move |_| {
-                            show_menu.set(false);
+        let file_menu = show_file().then(|| {
+            dropdown(
+                Menu::new()
+                    .on_close(move |_| close(show_file))
+                    .child(menu_item(
+                        show_file,
+                        menu_label("Open Folder...", Some("O"), true),
+                        move || state.select_folder(),
+                    ))
+                    .child(menu_item(
+                        show_file,
+                        menu_label("Reload", Some("R"), can_reload),
+                        move || {
                             if can_reload {
                                 state.reload_folder();
                             }
-                        }))
-                        .child(
-                            MenuButton::new()
-                                .child(menu_label("Settings...", None, true))
-                                .on_press(move |_| {
-                                    show_menu.set(false);
-                                    state.open_settings();
-                                }),
-                        )
-                        .child(
-                            MenuButton::new()
-                                .child(menu_label("Exit", Some("Q"), true))
-                                .on_press(move |_| std::process::exit(0)),
-                        ),
-                )
+                        },
+                    ))
+                    .child(menu_item(
+                        show_file,
+                        menu_label("Settings...", None, true),
+                        move || state.open_settings(),
+                    ))
+                    .child(menu_item(
+                        show_file,
+                        menu_label("Exit", Some("Q"), true),
+                        || std::process::exit(0),
+                    )),
+            )
         });
 
-        let mut show_edit = use_state(|| false);
-        let can_apply = state.is_any_file_checked();
-
         let edit_menu = show_edit().then(|| {
-            let label = menu_label("Select and apply profile...", Some("Enter"), can_apply);
-            rect()
-                .position(Position::new_absolute().top(32.).left(0.))
-                .child(Menu::new().on_close(move |_| show_edit.set(false)).child(
-                    MenuButton::new().child(label).on_press(move |_| {
-                        show_edit.set(false);
-                        if can_apply {
-                            let mut show = state.show_apply;
-                            show.set(true);
-                        }
-                    }),
-                ))
+            dropdown(
+                Menu::new()
+                    .on_close(move |_| close(show_edit))
+                    .child(menu_item(
+                        show_edit,
+                        menu_label("Select and apply profile...", Some("Enter"), can_apply),
+                        move || state.open_apply(),
+                    )),
+            )
         });
 
         rect()
             .width(Size::fill())
             .horizontal()
             .padding(2.)
-            .child(
-                rect()
-                    .child(
-                        Button::new()
-                            .flat()
-                            .on_press(move |_| {
-                                show_edit.set(false);
-                                show_menu.toggle();
-                            })
-                            .child("File"),
-                    )
-                    .maybe_child(menu),
-            )
-            .child(
-                rect()
-                    .child(
-                        Button::new()
-                            .flat()
-                            .on_press(move |_| {
-                                show_menu.set(false);
-                                show_edit.toggle();
-                            })
-                            .child("Edit"),
-                    )
-                    .maybe_child(edit_menu),
-            )
+            .child(menu_title("File", show_file, show_edit, file_menu))
+            .child(menu_title("Edit", show_edit, show_file, edit_menu))
     }
+}
+
+fn close(mut menu_open: State<bool>) {
+    menu_open.set(false);
+}
+
+/// Places a menu right under its title in the menu bar
+fn dropdown(menu: Menu) -> Rect {
+    rect()
+        .position(Position::new_absolute().top(32.).left(0.))
+        .child(menu)
+}
+
+/// A menu item that closes its menu and then runs the action
+fn menu_item(menu_open: State<bool>, label: Rect, action: impl Fn() + 'static) -> MenuButton {
+    MenuButton::new().child(label).on_press(move |_| {
+        close(menu_open);
+        action();
+    })
+}
+
+/// Title of a menu in the menu bar with the menu itself (if it is open).
+/// Only one menu can be open at a time
+fn menu_title(
+    title: &'static str,
+    mut open: State<bool>,
+    other: State<bool>,
+    menu: Option<Rect>,
+) -> Rect {
+    rect()
+        .child(
+            Button::new()
+                .flat()
+                .on_press(move |_| {
+                    close(other);
+                    open.toggle();
+                })
+                .child(title),
+        )
+        .maybe_child(menu)
 }
 
 /// Thin vertical rule with some room on both sides
@@ -225,10 +226,7 @@ impl Component for Header {
                         AttachedPosition::Right,
                         state.is_any_file_checked(),
                         icon(resources::APPLY),
-                        move |_| {
-                            let mut show = state.show_apply;
-                            show.set(true);
-                        },
+                        move |_| state.open_apply(),
                     ))
                     .child(vertical_separator())
                     .child(text("Location", 14.).color(colors().text_secondary))
@@ -342,17 +340,22 @@ impl Component for FileRow {
         let state = use_consume::<AppState>();
         let index = self.index;
 
+        // Memos notify only when the value changes, so toggling a checkbox or selecting
+        // a file re-renders only the rows that are affected
+        let is_checked = use_memo(move || state.checked.read().contains(&index));
+        let is_current = use_memo(move || *state.selected_file_index.read() == Some(index));
+
         let images = state.images.read();
         let Some(file_rec) = images.get(index) else {
             return rect().into_element();
         };
-        let is_checked = file_rec.is_selected();
+        let is_checked = is_checked();
         let has_lens_data = file_rec.has_lens_data();
         let file_name = file_rec.file_name();
         let mod_time = file_rec.mod_time().format(TIME_FORMAT).to_string();
         drop(images);
 
-        let is_current = *state.selected_file_index.read() == Some(index);
+        let is_current = is_current();
 
         let checkbox = rect()
             .on_press(move |e: Event<PressEventData>| {
@@ -381,10 +384,7 @@ impl Component for FileRow {
                     } else {
                         colors().text_primary
                     })
-                    .on_press(move |_| {
-                        let mut selected = state.selected_file_index;
-                        selected.set(Some(index));
-                    })
+                    .on_press(move |_| state.select_file(index))
                     .child(checkbox)
                     .child(
                         rect()
@@ -411,15 +411,7 @@ impl Component for Preview {
         let preview = use_memo(move || {
             let index = (*state.selected_file_index.read())?;
             let images = state.images.peek();
-            let exif_info = images.get(index)?.exif_info();
-            let plain_image;
-            let preview_img = match exif_info.preview_image.as_ref() {
-                Some(preview_img) => preview_img,
-                None => {
-                    plain_image = load_plain_image(&exif_info.file_path)?;
-                    &plain_image
-                }
-            };
+            let preview_img = decode_preview(images.get(index)?.exif_info())?;
             ImageHandle::from_rgba(
                 preview_img.width(),
                 preview_img.height(),
@@ -588,10 +580,7 @@ impl Component for ApplyDialog {
                 .child(rect().width(Size::flex(1.)).child(control))
         };
 
-        let close = move || {
-            let mut show = state.show_apply;
-            show.set(false);
-        };
+        let close = move || state.close_apply();
 
         let body = rect()
             .width(Size::fill())
@@ -621,10 +610,7 @@ impl Component for ApplyDialog {
                             .child(Button::new().on_press(move |_| close()).child("Cancel"))
                             .child(
                                 button(state.selected_profile.read().is_some())
-                                    .on_press(move |_| {
-                                        close();
-                                        state.apply_profile();
-                                    })
+                                    .on_press(move |_| state.confirm_apply())
                                     .child("Apply"),
                             ),
                     ),

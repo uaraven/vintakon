@@ -1,5 +1,10 @@
 use serde::{Deserialize, Serialize};
-use std::{fs, path::Path};
+use std::{
+    collections::HashSet,
+    ffi::OsString,
+    fs,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LensProfile {
@@ -19,6 +24,45 @@ pub struct Config {
     pub lens_profiles: Vec<LensProfile>,
 }
 
+/// Config file in the current directory, it has the highest priority
+const LOCAL_CONFIG_FILE: &str = "vintakon.conf";
+
+/// Places where the config can be stored: the local file, then the config directory of the user
+/// (`$XDG_CONFIG_HOME/vintakon/config.json`, `$HOME/.config/vintakon/config.json`)
+fn config_candidates(xdg_config_home: Option<OsString>, home: Option<OsString>) -> Vec<PathBuf> {
+    let mut candidates = vec![PathBuf::from(LOCAL_CONFIG_FILE)];
+    if let Some(dir) = xdg_config_home {
+        candidates.push(Path::new(&dir).join("vintakon").join("config.json"));
+    }
+    if let Some(dir) = home {
+        candidates.push(
+            Path::new(&dir)
+                .join(".config")
+                .join("vintakon")
+                .join("config.json"),
+        );
+    }
+    candidates
+}
+
+/// The config that exists, or the place for a new one (the user's config directory, never the
+/// local file). Loading and saving use the same file, so saved settings are always loaded back
+fn pick_config_path(candidates: &[PathBuf], exists: impl Fn(&Path) -> bool) -> Option<PathBuf> {
+    candidates
+        .iter()
+        .find(|path| exists(path))
+        .or_else(|| candidates.get(1))
+        .cloned()
+}
+
+fn config_path() -> Option<PathBuf> {
+    let candidates = config_candidates(
+        std::env::var_os("XDG_CONFIG_HOME"),
+        std::env::var_os("HOME"),
+    );
+    pick_config_path(&candidates, Path::exists)
+}
+
 impl Config {
     /// Creates a new empty Config
     pub fn new() -> Self {
@@ -28,37 +72,33 @@ impl Config {
         }
     }
 
-    /// Loads configuration with fallback logic:
-    /// 1. Try vintakon.conf in current directory
-    /// 2. Try config.json in $XDG_CONFIG_HOME/vintakon
-    /// 3. Return empty config if neither exists
-    pub fn load_with_fallback() -> Self {
-        // Try vintakon.conf in current directory first
-        if let Ok(config) = Self::load_from_file("vintakon.conf") {
-            return config;
-        }
-
-        // Try XDG_CONFIG_HOME/vintakon/config.json
-        if let Some(config_dir) = std::env::var_os("XDG_CONFIG_HOME") {
-            let config_path = Path::new(&config_dir).join("vintakon").join("config.json");
-            if let Ok(config) = Self::load_from_file(&config_path) {
-                return config;
+    /// Loads the configuration from the first existing config file, empty config is returned
+    /// if there is none. If the file cannot be read it is renamed to `<name>.broken` (so that
+    /// saving the settings does not overwrite it) and the second value describes the problem.
+    pub fn load_with_fallback() -> (Self, Option<String>) {
+        let Some(path) = config_path().filter(|path| path.exists()) else {
+            return (Self::new(), None);
+        };
+        match Self::load_from_file(&path) {
+            Ok(config) => (config, None),
+            Err(e) => {
+                let mut backup = path.clone().into_os_string();
+                backup.push(".broken");
+                let backup = PathBuf::from(backup);
+                let message = match fs::rename(&path, &backup) {
+                    Ok(()) => format!(
+                        "Failed to read the settings from {}: {e}\nThe file was renamed to {}",
+                        path.display(),
+                        backup.display()
+                    ),
+                    Err(rename_error) => format!(
+                        "Failed to read the settings from {}: {e}\nIt could not be renamed: {rename_error}",
+                        path.display()
+                    ),
+                };
+                (Self::new(), Some(message))
             }
         }
-
-        // If XDG_CONFIG_HOME is not set, try ~/.config/vintakon/config.json
-        if let Some(home_dir) = std::env::var_os("HOME") {
-            let config_path = Path::new(&home_dir)
-                .join(".config")
-                .join("vintakon")
-                .join("config.json");
-            if let Ok(config) = Self::load_from_file(&config_path) {
-                return config;
-            }
-        }
-
-        // Return empty config if no files found
-        Self::new()
     }
 
     /// Saves the Config to a JSON file
@@ -98,18 +138,12 @@ impl Config {
         }
     }
 
-    /// Saves configuration to $XDG_CONFIG_HOME/vintakon/config.json or $HOME/.config/vintakon/config.json
+    /// Saves the configuration to the file it was loaded from, or to
+    /// $XDG_CONFIG_HOME/vintakon/config.json or $HOME/.config/vintakon/config.json
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let config_path = if let Some(config_home) = std::env::var_os("XDG_CONFIG_HOME") {
-            Path::new(&config_home).join("vintakon").join("config.json")
-        } else if let Some(home_dir) = std::env::var_os("HOME") {
-            Path::new(&home_dir)
-                .join(".config")
-                .join("vintakon")
-                .join("config.json")
-        } else {
-            return Err("Unable to determine config directory: neither XDG_CONFIG_HOME nor HOME environment variables are set".into());
-        };
+        let config_path = config_path().ok_or(
+            "Unable to determine config directory: neither XDG_CONFIG_HOME nor HOME environment variables are set",
+        )?;
 
         // Create the parent directory if it doesn't exist
         if let Some(parent_dir) = config_path.parent() {
@@ -117,6 +151,31 @@ impl Config {
         }
 
         self.save_to_file(config_path)
+    }
+
+    /// Profiles are identified by their names, so the names must not be empty or repeated
+    pub fn validate(&self) -> Result<(), String> {
+        let mut names = HashSet::new();
+        for profile in &self.lens_profiles {
+            if profile.name.trim().is_empty() {
+                return Err("Lens profile name must not be empty".to_string());
+            }
+            if !names.insert(profile.name.as_str()) {
+                return Err(format!(
+                    "Lens profile name '{}' is used more than once",
+                    profile.name
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Name for a new profile that is not used by any of the existing ones
+    pub fn new_profile_name(&self) -> String {
+        (self.lens_profiles.len() + 1..)
+            .map(|n| format!("New Lens {n}"))
+            .find(|name| self.lens_profiles.iter().all(|p| &p.name != name))
+            .expect("there are infinitely many candidate names")
     }
 }
 
@@ -407,4 +466,63 @@ mod tests {
     }
 
     // #[test]
+
+    fn named(name: &str) -> LensProfile {
+        LensProfile {
+            name: name.to_string(),
+            lens_make: String::new(),
+            lens_model: String::new(),
+            min_focal_length: 50.0,
+            max_focal_length: 50.0,
+            min_aperture: "1.8".to_string(),
+            max_aperture: "22".to_string(),
+            crop_factor: 1.0,
+        }
+    }
+
+    #[test]
+    fn test_validate_rejects_empty_and_duplicate_names() {
+        let mut config = Config::new();
+        assert!(config.validate().is_ok());
+
+        config.lens_profiles = vec![named("A"), named("B")];
+        assert!(config.validate().is_ok());
+
+        config.lens_profiles = vec![named("A"), named("A")];
+        assert!(config.validate().unwrap_err().contains("'A'"));
+
+        config.lens_profiles = vec![named("A"), named("  ")];
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_new_profile_name_is_unique() {
+        let mut config = Config::new();
+        assert_eq!(config.new_profile_name(), "New Lens 1");
+
+        // "New Lens 2" is taken although there is only one profile
+        config.lens_profiles = vec![named("New Lens 2")];
+        assert_eq!(config.new_profile_name(), "New Lens 3");
+    }
+
+    #[test]
+    fn test_config_path_is_used_for_both_loading_and_saving() {
+        let candidates = config_candidates(Some("/xdg".into()), Some("/home/user".into()));
+        assert_eq!(candidates[0], PathBuf::from("vintakon.conf"));
+        let xdg = PathBuf::from("/xdg/vintakon/config.json");
+        let home = PathBuf::from("/home/user/.config/vintakon/config.json");
+
+        // Nothing exists: a new config goes to the user's config directory
+        assert_eq!(pick_config_path(&candidates, |_| false), Some(xdg.clone()));
+        // The local file wins when it exists
+        assert_eq!(
+            pick_config_path(&candidates, |p| p == Path::new("vintakon.conf")),
+            Some(PathBuf::from("vintakon.conf"))
+        );
+        // An existing config in HOME is kept even if XDG_CONFIG_HOME is set
+        assert_eq!(pick_config_path(&candidates, |p| p == home), Some(home));
+        // Without both variables there is nowhere to save
+        let none = config_candidates(None, None);
+        assert_eq!(pick_config_path(&none, |_| false), None);
+    }
 }

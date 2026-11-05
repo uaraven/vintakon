@@ -6,6 +6,7 @@ mod exif;
 mod logic;
 mod model;
 mod resources;
+mod settings_state;
 mod state;
 mod ui;
 

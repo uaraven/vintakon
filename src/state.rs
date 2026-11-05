@@ -1,3 +1,5 @@
+use std::{collections::HashSet, rc::Rc};
+
 use freya::prelude::*;
 
 use crate::{
@@ -14,6 +16,9 @@ use crate::{
 pub(crate) struct AppState {
     pub path: State<Option<String>>,
     pub images: State<Vec<FileRec>>,
+    /// Indexes of the checked images. It is separate from `images`, so toggling a checkbox
+    /// does not invalidate everything that shows the images
+    pub checked: State<HashSet<usize>>,
     pub is_applying: State<bool>,
     pub is_loading: State<bool>,
     pub selected_file_index: State<Option<usize>>,
@@ -24,13 +29,6 @@ pub(crate) struct AppState {
     pub show_settings: State<bool>,
     /// Whether the "Apply profile" dialog is open
     pub show_apply: State<bool>,
-    /// Copy of the config that is edited in the settings dialog
-    pub temp_config: State<Config>,
-    pub selected_profile_index: State<Option<usize>>,
-    /// Text of the exiftool path input in the settings dialog
-    pub exiftool_text: State<String>,
-    /// Bumped when a profile is deleted, so the editor fields do not keep the text of the removed profile
-    pub profile_generation: State<u32>,
     /// Message of the error dialog, if it is shown
     pub error_message: State<Option<String>>,
 }
@@ -38,26 +36,22 @@ pub(crate) struct AppState {
 impl AppState {
     /// Creates all the state. Must be called from a component body (it uses hooks).
     pub fn new() -> Self {
+        // The config is read once; a problem with it is shown as the first error
+        let startup = use_hook(|| Rc::new(Config::load_with_fallback()));
         Self {
             path: use_state(|| None),
             images: use_state(Vec::new),
+            checked: use_state(HashSet::new),
             is_applying: use_state(|| false),
             is_loading: use_state(|| false),
             selected_file_index: use_state(|| None),
-            config: use_state(Config::load_with_fallback),
+            config: use_state(|| startup.0.clone()),
             selected_profile: use_state(|| None),
             apply_aperture: use_state(String::new),
             apply_focal_length: use_state(String::new),
             show_settings: use_state(|| false),
             show_apply: use_state(|| false),
-            temp_config: use_state(|| Config {
-                exiftool_path: None,
-                lens_profiles: Vec::new(),
-            }),
-            selected_profile_index: use_state(|| None),
-            exiftool_text: use_state(String::new),
-            profile_generation: use_state(|| 0),
-            error_message: use_state(|| None),
+            error_message: use_state(|| startup.1.clone()),
         }
     }
 
@@ -77,7 +71,7 @@ impl AppState {
     }
 
     pub fn is_any_file_checked(&self) -> bool {
-        self.images.read().iter().any(|img| img.is_selected())
+        !self.checked.read().is_empty()
     }
 
     fn find_profile_by_name(&self, name: &str) -> Option<LensProfile> {
@@ -120,24 +114,67 @@ impl AppState {
         });
     }
 
-    /// Reads folder content and replaces the image list
+    /// Reads folder content and replaces the image list. It starts a new batch of work, so
+    /// the checked files and the actual aperture / focal length of the previous one are dropped.
+    /// If the folder cannot be read, the current state is kept and the error is shown.
     async fn reload(mut self, folder: String) {
         self.is_loading.set(true);
-        let images = logic::load_images(folder.clone(), self.exiftool_path()).await;
-        self.images.set(images);
-        self.path.set(Some(folder));
+        match logic::load_images(folder.clone(), self.exiftool_path()).await {
+            Ok(images) => {
+                self.images.set(images);
+                self.checked.set(HashSet::new());
+                self.apply_aperture.set(String::new());
+                self.apply_focal_length.set(String::new());
+                self.path.set(Some(folder));
+                self.selected_file_index.set(None);
+            }
+            Err(message) => self.report_error(message),
+        }
         self.is_loading.set(false);
-        self.selected_file_index.set(None);
+    }
+
+    /// Shows the error dialog. An error that is already shown is not replaced:
+    /// it is usually the first one that explains the others
+    pub fn report_error(mut self, message: String) {
+        if self.error_message.read().is_none() {
+            self.error_message.set(Some(message));
+        }
     }
 
     pub fn set_file_checked(mut self, index: usize, checked: bool) {
-        if let Some(file_rec) = self.images.write().get_mut(index) {
-            file_rec.set_selected(checked);
+        let mut set = self.checked.write();
+        if checked {
+            set.insert(index);
+        } else {
+            set.remove(&index);
+        }
+    }
+
+    pub fn select_file(mut self, index: usize) {
+        self.selected_file_index.set(Some(index));
+    }
+
+    /// Opens the "Apply profile" dialog if there is something to apply it to
+    pub fn open_apply(mut self) {
+        if self.is_any_file_checked() {
+            self.show_apply.set(true);
+        }
+    }
+
+    pub fn close_apply(mut self) {
+        self.show_apply.set(false);
+    }
+
+    /// Closes the "Apply profile" dialog and applies the selected profile
+    pub fn confirm_apply(self) {
+        if self.selected_profile.read().is_some() {
+            self.close_apply();
+            self.apply_profile();
         }
     }
 
     /// Writes selected lens profile to the checked images and reloads the folder
-    pub fn apply_profile(mut self) {
+    fn apply_profile(mut self) {
         let (Some(working_dir), Some(profile_name)) = (
             self.path.read().clone(),
             self.selected_profile.read().clone(),
@@ -147,13 +184,16 @@ impl AppState {
         let Some(profile) = self.find_profile_by_name(&profile_name) else {
             return;
         };
-        let selected: Vec<String> = self
-            .images
-            .read()
-            .iter()
-            .filter(|img| img.is_selected())
-            .map(|img| img.exif_info().file_path.clone())
-            .collect();
+        let selected: Vec<String> = {
+            let images = self.images.read();
+            let checked = self.checked.read();
+            images
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| checked.contains(index))
+                .map(|(_, img)| img.exif_info().file_path.clone())
+                .collect()
+        };
         if selected.is_empty() {
             return;
         }
@@ -178,114 +218,31 @@ impl AppState {
             // `reload` shows its own busy dialog right away, so the UI is never left idle in between
             this.is_applying.set(false);
             if let Err(message) = result {
-                this.error_message.set(Some(message));
+                this.report_error(message);
             }
             this.reload(working_dir).await;
         });
     }
 
-    // ---- settings dialog actions ----
+    // ---- settings ----
 
     pub fn open_settings(mut self) {
-        let config = self.config.read().clone();
-        self.selected_profile_index
-            .set(if config.lens_profiles.is_empty() {
-                None
-            } else {
-                Some(0)
-            });
-        self.exiftool_text
-            .set(config.exiftool_path.clone().unwrap_or_default());
-        self.temp_config.set(config);
         self.show_settings.set(true);
     }
 
     pub fn close_settings(mut self) {
         self.show_settings.set(false);
-        self.selected_profile_index.set(None);
     }
 
-    pub fn save_settings(mut self) {
-        let new_config = self.temp_config.read().clone();
-        if let Err(e) = new_config.save() {
-            // Keep the dialog open so the edited profiles are not lost
-            self.error_message
-                .set(Some(format!("Failed to save the settings: {e}")));
-            return;
-        }
-        self.config.set(new_config);
-        // Drop the selection if the selected profile does not exist any more
+    /// Takes the edited settings into use. Drops the profile selection
+    /// if the selected profile does not exist any more
+    pub fn set_config(mut self, config: Config) {
+        self.config.set(config);
         let selected = self.selected_profile.read().clone();
         if let Some(name) = selected
             && self.find_profile_by_name(&name).is_none()
         {
             self.selected_profile.set(None);
         }
-        self.close_settings();
-    }
-
-    pub fn add_profile(mut self) {
-        let mut config = self.temp_config.write();
-        let name = format!("New Lens {}", config.lens_profiles.len() + 1);
-        config.lens_profiles.push(LensProfile {
-            name,
-            lens_make: String::new(),
-            lens_model: String::new(),
-            min_focal_length: 50.0,
-            max_focal_length: 50.0,
-            min_aperture: "1.8".to_string(),
-            max_aperture: "22".to_string(),
-            crop_factor: 1.0,
-        });
-        let last = config.lens_profiles.len() - 1;
-        drop(config);
-        self.selected_profile_index.set(Some(last));
-    }
-
-    pub fn delete_profile(mut self, index: usize) {
-        let remaining = {
-            let mut config = self.temp_config.write();
-            if index >= config.lens_profiles.len() {
-                return;
-            }
-            config.lens_profiles.remove(index);
-            config.lens_profiles.len()
-        };
-        *self.profile_generation.write() += 1;
-        let selected = *self.selected_profile_index.read();
-        if let Some(selected) = selected {
-            if selected == index {
-                self.selected_profile_index.set(if remaining == 0 {
-                    None
-                } else {
-                    Some(index.saturating_sub(1))
-                });
-            } else if selected > index {
-                self.selected_profile_index.set(Some(selected - 1));
-            }
-        }
-    }
-
-    /// Applies a change to one of the profiles that are being edited
-    pub fn edit_profile(mut self, index: usize, change: impl FnOnce(&mut LensProfile)) {
-        if let Some(profile) = self.temp_config.write().lens_profiles.get_mut(index) {
-            change(profile);
-        }
-    }
-
-    /// Stores the exiftool path being typed in the settings dialog
-    pub fn edit_exiftool_path(mut self, path: String) {
-        self.temp_config.write().exiftool_path = if path.is_empty() { None } else { Some(path) };
-    }
-
-    /// Asks user for the location of the exiftool executable
-    pub fn select_exiftool_path(self) {
-        spawn(async move {
-            if let Some(path) = logic::select_exiftool_file().await {
-                let mut this = self;
-                this.exiftool_text.set(path.clone());
-                this.edit_exiftool_path(path);
-            }
-        });
     }
 }

@@ -2,11 +2,12 @@
 
 use freya::prelude::*;
 
-use super::widgets::{PRIMARY, card, colors, divider, icon, icon_button, text};
+use super::widgets::{PRIMARY, card, colors, icon, icon_button, text};
 use crate::{
     logic::{is_focal_length_valid, is_valid_floating_point},
     model::lens_profile::LensProfile,
     resources,
+    settings_state::SettingsState,
     state::AppState,
 };
 
@@ -15,39 +16,35 @@ pub struct SettingsDialog;
 
 impl Component for SettingsDialog {
     fn render(&self) -> impl IntoElement {
-        let state = use_consume::<AppState>();
+        let state = SettingsState::new(use_consume::<AppState>());
+        use_provide_context(|| state);
 
-        let exiftool_path = rect()
-            .width(Size::fill())
-            .padding(10.)
-            .spacing(10.)
-            .vertical()
-            .child(text("Exiftool Path", 16.))
-            .child(
-                rect()
-                    .width(Size::fill())
-                    .horizontal()
-                    .content(Content::flex())
-                    .cross_align(Alignment::Center)
-                    .spacing(10.)
-                    .child(
-                        rect().width(Size::flex(1.)).child(
-                            Input::new(state.exiftool_text)
-                                .placeholder("Path to exiftool executable")
-                                .width(Size::fill())
-                                .on_validate(move |validator: InputValidator| {
-                                    state.edit_exiftool_path(validator.text().clone());
-                                }),
-                        ),
-                    )
-                    .child(icon_button(
-                        "Select location of 'exiftool' utility",
-                        AttachedPosition::Left,
-                        true,
-                        icon(resources::OPEN),
-                        move |_| state.select_exiftool_path(),
-                    )),
-            );
+        let exiftool_path = rect().width(Size::fill()).padding(10.).child(card(
+            "Exiftool Path".to_string(),
+            rect()
+                .width(Size::fill())
+                .horizontal()
+                .content(Content::flex())
+                .cross_align(Alignment::Center)
+                .spacing(10.)
+                .child(
+                    rect().width(Size::flex(1.)).child(
+                        Input::new(state.exiftool_text)
+                            .placeholder("Path to exiftool executable")
+                            .width(Size::fill())
+                            .on_validate(move |validator: InputValidator| {
+                                state.edit_exiftool_path(validator.text().clone());
+                            }),
+                    ),
+                )
+                .child(icon_button(
+                    "Select location of 'exiftool' utility",
+                    AttachedPosition::Left,
+                    true,
+                    icon(resources::OPEN),
+                    move |_| state.select_exiftool_path(),
+                )),
+        ));
 
         let profiles = rect()
             .width(Size::fill())
@@ -76,7 +73,6 @@ impl Component for SettingsDialog {
             .vertical()
             .content(Content::flex())
             .child(exiftool_path)
-            .child(divider(1.))
             .child(profiles);
 
         // The popup takes 90% of the window, its content is a flex column so that
@@ -84,7 +80,7 @@ impl Component for SettingsDialog {
         Popup::new()
             .width(Size::window_percent(90.))
             .height(Size::window_percent(90.))
-            .on_close_request(move |_| state.close_settings())
+            .on_close_request(move |_| state.close())
             .child(
                 rect()
                     .width(Size::fill())
@@ -97,14 +93,10 @@ impl Component for SettingsDialog {
                         PopupButtons::new()
                             .child(
                                 Button::new()
-                                    .on_press(move |_| state.close_settings())
+                                    .on_press(move |_| state.close())
                                     .child("Cancel"),
                             )
-                            .child(
-                                Button::new()
-                                    .on_press(move |_| state.save_settings())
-                                    .child("Ok"),
-                            ),
+                            .child(Button::new().on_press(move |_| state.save()).child("Ok")),
                     ),
             )
     }
@@ -115,7 +107,7 @@ struct ProfileList;
 
 impl Component for ProfileList {
     fn render(&self) -> impl IntoElement {
-        let state = use_consume::<AppState>();
+        let state = use_consume::<SettingsState>();
         let selected_index = *state.selected_profile_index.read();
 
         let names: Vec<String> = state
@@ -200,7 +192,7 @@ struct ProfileEditor;
 
 impl Component for ProfileEditor {
     fn render(&self) -> impl IntoElement {
-        let state = use_consume::<AppState>();
+        let state = use_consume::<SettingsState>();
 
         let Some(index) = *state.selected_profile_index.read() else {
             return placeholder("Select a profile to edit");
@@ -383,7 +375,7 @@ impl Component for ProfileField {
     }
 
     fn render(&self) -> impl IntoElement {
-        let state = use_consume::<AppState>();
+        let state = use_consume::<SettingsState>();
         let text = use_state(|| self.initial.clone());
         let (index, kind) = (self.index, self.kind);
 

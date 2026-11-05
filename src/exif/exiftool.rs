@@ -1,202 +1,150 @@
 use crate::exif::info::{ExifChanges, ExifInfo, LensInfo};
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
-use image::io::Reader as ImageReader;
+use image::DynamicImage;
 use serde_json::Value;
-use std::io::Cursor;
 use std::path::Path;
 use std::process::Command;
 
-fn supported_extensions() -> Vec<&'static str> {
-    vec![
-        "jpg", "jpeg", "raf", "crw", "cr2", "cr3", "nef", "nrw", "arw", "srf", "sr2", "orf",
-        "tiff", "dng", "3fr", "gpr", "mef", "raw", "rw2", "rwl", "x3f", "srw",
-    ]
+const SUPPORTED_EXTENSIONS: [&str; 22] = [
+    "jpg", "jpeg", "raf", "crw", "cr2", "cr3", "nef", "nrw", "arw", "srf", "sr2", "orf", "tiff",
+    "dng", "3fr", "gpr", "mef", "raw", "rw2", "rwl", "x3f", "srw",
+];
+
+/// Previews are downscaled to fit into a square of this size: it is enough for the preview pane
+/// and keeps the bitmap (which is kept in memory and uploaded to the GPU) small
+const MAX_PREVIEW_SIZE: u32 = 1600;
+
+/// Tags that can contain an embedded preview, the first existing one is used
+const PREVIEW_TAGS: [&str; 3] = ["PreviewImage", "JpgFromRaw", "ThumbnailImage"];
+
+/// `exiftool` from the PATH is used unless the path to the program is configured
+fn exiftool_command(program: Option<String>) -> Command {
+    Command::new(program.unwrap_or_else(|| "exiftool".to_string()))
 }
 
-pub(crate) fn read_files(path: &str, exiftool_program: Option<String>) -> Vec<ExifInfo> {
-    let mut exif_infos = Vec::new();
-
-    let exif_tool_program = match exiftool_program {
-        Some(program) => program,
-        None => "exiftool".to_string(),
-    };
-
+/// Reads exif info of all supported files in the folder. Blocks while exiftool is running.
+/// Returns the error message if exiftool could not be run or its output is not understood
+pub(crate) fn read_files(
+    path: &str,
+    exiftool_program: Option<String>,
+) -> Result<Vec<ExifInfo>, String> {
     // Run exiftool command to extract EXIF data as JSON
-    let mut cmd = Command::new(exif_tool_program);
-    cmd.arg("-j")
-        .arg("-b")
-        .arg("-q")
-        .arg("-api")
-        .arg("structformat=jsonq")
-        .arg("-FileModifyDate")
-        .arg("-Make")
-        .arg("-Model")
-        .arg("-LensMake")
-        .arg("-LensModel")
-        .arg("-LensInfo#")
-        .arg("-ExposureCompensation")
-        .arg("-ISO")
-        .arg("-Aperture")
-        .arg("-ShutterSpeed")
-        .arg("-FocalLength")
-        .arg("-FocalLengthIn35mmFormat")
-        .arg("-PreviewImage")
-        .arg("-JpgFromRaw")
-        .arg("-ThumbnailImage");
-
-    for ext in supported_extensions() {
+    let mut cmd = exiftool_command(exiftool_program);
+    cmd.args(["-j", "-b", "-q", "-api", "structformat=jsonq"])
+        .args([
+            "-FileModifyDate",
+            "-Make",
+            "-Model",
+            "-LensMake",
+            "-LensModel",
+            "-LensInfo#",
+            "-ExposureCompensation",
+            "-ISO",
+            "-Aperture",
+            "-ShutterSpeed",
+            "-FocalLength",
+            "-FocalLengthIn35mmFormat",
+            "-PreviewImage",
+            "-JpgFromRaw",
+            "-ThumbnailImage",
+        ]);
+    for ext in SUPPORTED_EXTENSIONS {
         cmd.arg("-ext").arg(ext);
     }
     cmd.arg(path);
 
-    let output = match cmd.output() {
-        Ok(output) => output,
-        Err(e) => {
-            eprintln!("Failed to run exiftool: {}", e);
-            return exif_infos;
-        }
-    };
-
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run exiftool: {e}"))?;
     if !output.status.success() {
-        eprintln!("exiftool failed with status: {}", output.status);
-        return exif_infos;
+        return Err(format!(
+            "exiftool failed with status {}:\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    // exiftool prints nothing at all when the folder has no supported files
+    if output.stdout.trim_ascii().is_empty() {
+        return Ok(Vec::new());
     }
 
-    let json_str = match String::from_utf8(output.stdout) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Failed to parse exiftool output as UTF-8: {}", e);
-            return exif_infos;
-        }
-    };
+    let entries: Vec<Value> = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse the output of exiftool: {e}"))?;
 
-    // Parse JSON response
-    let json_data: Value = match serde_json::from_str(&json_str) {
-        Ok(data) => data,
-        Err(e) => {
-            eprintln!("Failed to parse JSON from exiftool: {}", e);
-            return exif_infos;
-        }
-    };
-
-    // Process each file entry
-    if let Some(array) = json_data.as_array() {
-        for entry in array {
-            if let Some(exif_info) = parse_exif_entry(entry) {
-                exif_infos.push(exif_info);
-            }
-        }
-    }
-
+    let mut exif_infos: Vec<ExifInfo> = entries.iter().filter_map(parse_exif_entry).collect();
     exif_infos.sort_by(|a, b| a.file_path.cmp(&b.file_path));
-
-    exif_infos
+    Ok(exif_infos)
 }
 
 fn parse_exif_entry(entry: &Value) -> Option<ExifInfo> {
-    let file_path = entry.get("SourceFile")?.as_str()?.to_string();
+    let str_field = |name: &str| entry.get(name).and_then(Value::as_str).map(String::from);
 
-    // Parse modification date
-    let mod_time = if let Some(date_str) = entry.get("FileModifyDate").and_then(|v| v.as_str()) {
-        DateTime::parse_from_str(date_str, "%Y:%m:%d %H:%M:%S%z")
-            .ok()?
-            .with_timezone(&Utc)
-    } else {
-        // Fallback to file system metadata
-        let metadata = std::fs::metadata(&file_path).ok()?;
-        let system_time = metadata.modified().ok()?;
-        DateTime::from(system_time)
-    };
+    let file_path = str_field("SourceFile")?;
 
-    // Extract optional string fields
-    let make = entry.get("Make").and_then(|v| v.as_str()).map(String::from);
-    let model = entry
-        .get("Model")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    let lens_make = entry
-        .get("LensMake")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    let lens_model = entry
-        .get("LensModel")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    let iso = entry.get("ISO").and_then(|v| v.as_str()).map(String::from);
-    let aperture = entry
-        .get("Aperture")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    let shutter_speed = entry
-        .get("ShutterSpeed")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    let focal_length = entry
-        .get("FocalLength")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    let focal_length_35mm = entry
-        .get("FocalLengthIn35mmFormat")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    let preview_base64 = entry
-        .get("PreviewImage")
-        .or_else(|| entry.get("JpgFromRaw"))
-        .or_else(|| entry.get("ThumbnailImage"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.strip_prefix("base64:").unwrap_or(s))
-        .map(String::from);
+    // Modification date from the tag, or from the file system if the tag is missing or malformed
+    let mod_time = str_field("FileModifyDate")
+        .and_then(|date| DateTime::parse_from_str(&date, "%Y:%m:%d %H:%M:%S%z").ok())
+        .map(|date| date.with_timezone(&Utc))
+        .or_else(|| {
+            let modified = std::fs::metadata(&file_path).ok()?.modified().ok()?;
+            Some(DateTime::<Utc>::from(modified))
+        })?;
 
-    // Parse lens info
-    let lens_info = entry
-        .get("LensInfo")
-        .and_then(|v| v.as_str())
-        .and_then(LensInfo::from_string);
-
-    // Decode base64 image data if present
-    let preview_image = preview_base64.as_ref().and_then(|base64_str| {
-        match general_purpose::STANDARD.decode(base64_str) {
-            Ok(image_data) => {
-                let cursor = Cursor::new(image_data);
-                match ImageReader::new(cursor).with_guessed_format() {
-                    Ok(reader) => reader.decode().ok(),
-                    Err(_) => None,
-                }
-            }
-            Err(e) => {
-                eprintln!("Failed to decode base64 preview image: {}", e);
-                None
-            }
-        }
-    });
+    let preview_image = PREVIEW_TAGS
+        .iter()
+        .find_map(|tag| entry.get(tag))
+        .and_then(Value::as_str)
+        .map(|data| data.strip_prefix("base64:").unwrap_or(data))
+        .and_then(|data| {
+            general_purpose::STANDARD
+                .decode(data)
+                .inspect_err(|e| eprintln!("Failed to decode base64 preview image: {e}"))
+                .ok()
+        });
 
     Some(ExifInfo {
-        file_path,
         mod_time,
-        make,
-        model,
-        lens_make,
-        lens_model,
-        lens_info,
-        iso,
-        aperture,
-        shutter_speed,
-        focal_length,
-        focal_length_35mm,
+        make: str_field("Make"),
+        model: str_field("Model"),
+        lens_make: str_field("LensMake"),
+        lens_model: str_field("LensModel"),
+        lens_info: entry
+            .get("LensInfo")
+            .and_then(Value::as_str)
+            .and_then(LensInfo::from_string),
+        iso: str_field("ISO"),
+        aperture: str_field("Aperture"),
+        shutter_speed: str_field("ShutterSpeed"),
+        focal_length: str_field("FocalLength"),
+        focal_length_35mm: str_field("FocalLengthIn35mmFormat"),
         preview_image,
+        file_path,
     })
 }
 
-/// Decodes a plain JPEG file (downscaled) to use as a preview. Used for the files
-/// without an embedded preview (e.g. edited JPEGs); decoding is too slow to do for the whole folder
-pub(crate) fn load_plain_image(file_path: &str) -> Option<image::DynamicImage> {
+/// Decodes the preview of the file: the embedded one or, for the files without it
+/// (e.g. edited JPEGs), the image itself. The result is downscaled
+pub(crate) fn decode_preview(exif_info: &ExifInfo) -> Option<DynamicImage> {
+    let image = exif_info
+        .preview_image
+        .as_deref()
+        .and_then(|data| image::load_from_memory(data).ok())
+        .or_else(|| load_plain_image(&exif_info.file_path))?;
+    if image.width() > MAX_PREVIEW_SIZE || image.height() > MAX_PREVIEW_SIZE {
+        Some(image.thumbnail(MAX_PREVIEW_SIZE, MAX_PREVIEW_SIZE))
+    } else {
+        Some(image)
+    }
+}
+
+/// Decodes a plain JPEG file
+fn load_plain_image(file_path: &str) -> Option<DynamicImage> {
     let ext = Path::new(file_path).extension()?.to_str()?.to_lowercase();
     if ext != "jpg" && ext != "jpeg" {
         return None;
     }
-    let img = ImageReader::open(file_path).ok()?.decode().ok()?;
-    Some(img.thumbnail(1600, 1600))
+    image::open(file_path).ok()
 }
 
 /// Writes the changes to the files. Blocks while exiftool is running.
@@ -207,12 +155,7 @@ pub fn apply_profile(
     file_names: Vec<String>,
     changes: ExifChanges,
 ) -> Result<(), String> {
-    let exif_tool_program = match exiftool_program {
-        Some(program) => program,
-        None => "exiftool".to_string(),
-    };
-
-    let mut cmd = Command::new(exif_tool_program);
+    let mut cmd = exiftool_command(exiftool_program);
     cmd.current_dir(dir);
     cmd.arg("-q");
     cmd.args(changes.to_exif_tool());
@@ -221,7 +164,6 @@ pub fn apply_profile(
         let rel_name = rel_name.strip_prefix(dir).unwrap_or(rel_name);
         cmd.arg(rel_name);
     }
-    // cmd.get_args().for_each(|f| println!("{} ", f.display()));
 
     let output = cmd
         .output()
@@ -244,7 +186,10 @@ pub fn apply_profile(
 
 #[cfg(test)]
 mod exiftool_test {
-    use crate::exif::{exiftool::parse_exif_entry, info::LensInfo};
+    use crate::exif::{
+        exiftool::{decode_preview, parse_exif_entry},
+        info::LensInfo,
+    };
     fn load_test_data(name: &str) -> serde_json::Value {
         let path = format!("test-data/{}.json", name);
         let data = std::fs::read_to_string(path).expect("Failed to read test data");
@@ -258,6 +203,7 @@ mod exiftool_test {
 
         assert!(exif.is_some());
         let exif = exif.unwrap();
+        let preview = decode_preview(&exif);
         assert_eq!(exif.make.unwrap(), "FUJIFILM");
         assert_eq!(exif.model.unwrap(), "X-T5");
         assert_eq!(exif.lens_make.unwrap(), "SIGMA");
@@ -278,12 +224,12 @@ mod exiftool_test {
             _ => panic!("Expected Prime variant"),
         }
 
-        // Verify that the base64 image was decoded successfully
+        // Verify that the base64 image was extracted and can be decoded
         assert!(
             exif.preview_image.is_some(),
             "Preview image should be decoded from base64"
         );
-        let image = exif.preview_image.unwrap();
+        let image = preview.expect("Preview should be decodable");
         assert!(image.width() > 0, "Image should have positive width");
         assert!(image.height() > 0, "Image should have positive height");
     }
@@ -295,6 +241,7 @@ mod exiftool_test {
 
         assert!(exif.is_some());
         let exif = exif.unwrap();
+        let preview = decode_preview(&exif);
         assert_eq!(exif.make.unwrap(), "SONY");
         assert_eq!(exif.model.unwrap(), "ILCE-7M4");
         assert!(exif.lens_make.is_none());
@@ -316,12 +263,12 @@ mod exiftool_test {
             _ => panic!("Expected Prime variant"),
         }
 
-        // Verify that the base64 image was decoded successfully
+        // Verify that the base64 image was extracted and can be decoded
         assert!(
             exif.preview_image.is_some(),
             "Preview image should be decoded from base64"
         );
-        let image = exif.preview_image.unwrap();
+        let image = preview.expect("Preview should be decodable");
         assert!(image.width() > 0, "Image should have positive width");
         assert!(image.height() > 0, "Image should have positive height");
     }
@@ -330,7 +277,7 @@ mod exiftool_test {
     fn test_read_files() {
         use super::read_files;
 
-        let exif_infos = read_files("test-data/img", None);
+        let exif_infos = read_files("test-data/img", None).unwrap();
 
         assert!(!exif_infos.is_empty(), "Should read at least one file");
         assert!(
@@ -346,5 +293,24 @@ mod exiftool_test {
                     || exif_info.file_path.ends_with(".arw")
             );
         }
+    }
+
+    #[test]
+    fn test_read_files_reports_missing_exiftool() {
+        use super::read_files;
+
+        let result = read_files("test-data/img", Some("/nonexistent/exiftool".to_string()));
+        assert!(result.unwrap_err().contains("Failed to run exiftool"));
+    }
+
+    #[test]
+    fn test_read_files_empty_folder() {
+        use super::read_files;
+
+        let dir = std::env::temp_dir().join("vintakon_empty_folder_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let result = read_files(dir.to_str().unwrap(), None);
+        std::fs::remove_dir(&dir).unwrap();
+        assert!(result.unwrap().is_empty());
     }
 }

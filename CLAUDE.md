@@ -210,8 +210,9 @@ cargo clippy
 
 - **`main.rs`**: Application entry point, sets up the Iced GUI application with window settings and app icon
 - **`model/`**: Contains application state and data structures
-  - **`state.rs`**: Main application state (`VintakonApp`) with UI event handling and async operations
-  - **`file_rec.rs`**: File record wrapper around EXIF data with selection state
+  - **`state.rs`**: Main application state (`AppState`) with UI event handling and async operations
+  - **`settings_state.rs`**: State of the settings dialog (edited copy of the config), alive only while the dialog is open
+  - **`file_rec.rs`**: File record wrapper around EXIF data (the checked files are kept in `AppState::checked`)
 - **`exif/`**: EXIF data processing and lens information parsing
   - **`exiftool.rs`**: Interface to `exiftool` command-line utility, handles JSON parsing and image preview extraction
   - **`info.rs`**: Core EXIF data structures including `ExifInfo` and `LensInfo` enums (Prime vs Zoom lenses)

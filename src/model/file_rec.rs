@@ -3,28 +3,16 @@ use crate::exif::info;
 #[derive(Debug, Clone)]
 pub(crate) struct FileRec {
     exif_info: info::ExifInfo,
-    selected: bool,
 }
 
 impl FileRec {
     pub fn new(exif_info: info::ExifInfo) -> Self {
-        Self {
-            exif_info,
-            selected: false,
-        }
+        Self { exif_info }
     }
 
     pub fn has_lens_data(&self) -> bool {
         self.exif_info.lens_info.is_some()
             || (self.exif_info.lens_model.is_some() && self.exif_info.lens_make.is_some())
-    }
-
-    pub fn is_selected(&self) -> bool {
-        self.selected
-    }
-
-    pub fn set_selected(&mut self, selected: bool) {
-        self.selected = selected;
     }
 
     pub fn file_name(&self) -> String {
