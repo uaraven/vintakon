@@ -86,17 +86,8 @@ impl SettingsState {
         };
         *self.profile_generation.write() += 1;
         let selected = *self.selected_profile_index.read();
-        if let Some(selected) = selected {
-            if selected == index {
-                self.selected_profile_index.set(if remaining == 0 {
-                    None
-                } else {
-                    Some(index.saturating_sub(1))
-                });
-            } else if selected > index {
-                self.selected_profile_index.set(Some(selected - 1));
-            }
-        }
+        self.selected_profile_index
+            .set(selection_after_delete(selected, index, remaining));
     }
 
     /// Applies a change to one of the profiles that are being edited
@@ -120,5 +111,60 @@ impl SettingsState {
                 this.edit_exiftool_path(path);
             }
         });
+    }
+}
+
+/// Which profile is selected after the profile at `deleted` was removed, leaving `remaining`
+/// profiles: the selection follows its profile, and if the selected profile itself was removed
+/// the previous one (or the first one) becomes selected
+fn selection_after_delete(
+    selected: Option<usize>,
+    deleted: usize,
+    remaining: usize,
+) -> Option<usize> {
+    let selected = selected?;
+    if remaining == 0 {
+        None
+    } else if selected == deleted {
+        Some(deleted.saturating_sub(1))
+    } else if selected > deleted {
+        Some(selected - 1)
+    } else {
+        Some(selected)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::selection_after_delete;
+
+    #[test]
+    fn deleting_the_selected_profile_selects_the_previous_one() {
+        assert_eq!(selection_after_delete(Some(2), 2, 3), Some(1));
+    }
+
+    #[test]
+    fn deleting_the_first_selected_profile_selects_the_new_first_one() {
+        assert_eq!(selection_after_delete(Some(0), 0, 2), Some(0));
+    }
+
+    #[test]
+    fn deleting_the_only_profile_clears_the_selection() {
+        assert_eq!(selection_after_delete(Some(0), 0, 0), None);
+    }
+
+    #[test]
+    fn deleting_a_profile_before_the_selected_one_shifts_the_selection() {
+        assert_eq!(selection_after_delete(Some(3), 1, 4), Some(2));
+    }
+
+    #[test]
+    fn deleting_a_profile_after_the_selected_one_keeps_the_selection() {
+        assert_eq!(selection_after_delete(Some(1), 3, 4), Some(1));
+    }
+
+    #[test]
+    fn nothing_selected_stays_nothing_selected() {
+        assert_eq!(selection_after_delete(None, 0, 2), None);
     }
 }

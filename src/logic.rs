@@ -106,4 +106,121 @@ mod tests {
         assert!(!is_focal_length_valid("50.5"));
         assert!(!is_focal_length_valid("5a"));
     }
+
+    // ---- exiftool operations ----
+
+    use crate::test_util::{copy_test_jpg, temp_dir};
+
+    fn block_on<F: std::future::Future>(future: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+
+    fn profile() -> LensProfile {
+        LensProfile {
+            name: "Helios".to_string(),
+            lens_make: "Helios".to_string(),
+            lens_model: "44-2 58mm f/2".to_string(),
+            min_focal_length: 58.0,
+            max_focal_length: 58.0,
+            min_aperture: "2".to_string(),
+            max_aperture: "16".to_string(),
+            crop_factor: 1.5,
+        }
+    }
+
+    #[test]
+    fn load_images_wraps_the_files_of_the_folder() {
+        let dir = temp_dir("logic_load");
+        copy_test_jpg(&dir, "photo.jpg");
+
+        let images = block_on(load_images(dir.to_str().unwrap().to_string(), None)).unwrap();
+
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].file_name(), "photo.jpg");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_images_reports_missing_exiftool() {
+        let result = block_on(load_images(
+            "test-data/img".to_string(),
+            Some("/nonexistent/exiftool".to_string()),
+        ));
+        assert!(result.unwrap_err().contains("Failed to run exiftool"));
+    }
+
+    #[test]
+    fn apply_uses_actual_aperture_and_focal_length_when_given() {
+        let dir = temp_dir("logic_apply_actual");
+        let file = copy_test_jpg(&dir, "photo.jpg");
+        let dir_name = dir.to_str().unwrap().to_string();
+
+        block_on(apply_profile_to_images(
+            dir_name.clone(),
+            profile(),
+            "4".to_string(),
+            "85".to_string(),
+            vec![file.to_str().unwrap().to_string()],
+            None,
+        ))
+        .unwrap();
+
+        let images = block_on(load_images(dir_name, None)).unwrap();
+        let info = images[0].exif_info();
+        assert_eq!(info.lens_model.as_deref(), Some("44-2 58mm f/2"));
+        assert_eq!(info.aperture.as_deref(), Some("4.0"));
+        assert!(info.focal_length.as_deref().unwrap().starts_with("85"));
+        // 85 * 1.5 = 127.5, the tag is an integer and exiftool rounds it
+        assert!(
+            info.focal_length_35mm
+                .as_deref()
+                .unwrap()
+                .starts_with("128")
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn apply_uses_the_profile_focal_length_when_actual_values_are_empty() {
+        let dir = temp_dir("logic_apply_profile");
+        let file = copy_test_jpg(&dir, "photo.jpg");
+        let dir_name = dir.to_str().unwrap().to_string();
+
+        block_on(apply_profile_to_images(
+            dir_name.clone(),
+            profile(),
+            String::new(),
+            String::new(),
+            vec![file.to_str().unwrap().to_string()],
+            None,
+        ))
+        .unwrap();
+
+        let images = block_on(load_images(dir_name, None)).unwrap();
+        let info = images[0].exif_info();
+        assert!(info.focal_length.as_deref().unwrap().starts_with("58"));
+        assert!(info.focal_length_35mm.as_deref().unwrap().starts_with("87"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn apply_reports_exiftool_errors() {
+        let dir = temp_dir("logic_apply_error");
+        std::fs::write(dir.join("bad.jpg"), "not a jpeg").unwrap();
+
+        let result = block_on(apply_profile_to_images(
+            dir.to_str().unwrap().to_string(),
+            profile(),
+            String::new(),
+            String::new(),
+            vec![dir.join("bad.jpg").to_str().unwrap().to_string()],
+            None,
+        ));
+
+        assert!(result.is_err());
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

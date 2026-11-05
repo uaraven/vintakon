@@ -76,16 +76,22 @@ impl Config {
     /// if there is none. If the file cannot be read it is renamed to `<name>.broken` (so that
     /// saving the settings does not overwrite it) and the second value describes the problem.
     pub fn load_with_fallback() -> (Self, Option<String>) {
-        let Some(path) = config_path().filter(|path| path.exists()) else {
-            return (Self::new(), None);
-        };
-        match Self::load_from_file(&path) {
+        match config_path().filter(|path| path.exists()) {
+            Some(path) => Self::load_or_quarantine(&path),
+            None => (Self::new(), None),
+        }
+    }
+
+    /// Loads the config from the existing file. If it cannot be read, the file is renamed
+    /// to `<name>.broken` and an empty config is returned with the description of the problem
+    fn load_or_quarantine(path: &Path) -> (Self, Option<String>) {
+        match Self::load_from_file(path) {
             Ok(config) => (config, None),
             Err(e) => {
-                let mut backup = path.clone().into_os_string();
+                let mut backup = path.to_path_buf().into_os_string();
                 backup.push(".broken");
                 let backup = PathBuf::from(backup);
-                let message = match fs::rename(&path, &backup) {
+                let message = match fs::rename(path, &backup) {
                     Ok(()) => format!(
                         "Failed to read the settings from {}: {e}\nThe file was renamed to {}",
                         path.display(),
@@ -524,5 +530,50 @@ mod tests {
         // Without both variables there is nowhere to save
         let none = config_candidates(None, None);
         assert_eq!(pick_config_path(&none, |_| false), None);
+    }
+
+    #[test]
+    fn test_load_or_quarantine_reads_valid_config_sorted() {
+        let dir = crate::test_util::temp_dir("config_valid");
+        let path = dir.join("config.json");
+        let config = Config {
+            exiftool_path: Some("/usr/bin/exiftool".to_string()),
+            lens_profiles: vec![named("Zeiss"), named("Helios")],
+        };
+        config.save_to_file(&path).unwrap();
+
+        let (loaded, error) = Config::load_or_quarantine(&path);
+
+        assert!(error.is_none());
+        assert_eq!(loaded.exiftool_path.as_deref(), Some("/usr/bin/exiftool"));
+        let names: Vec<&str> = loaded
+            .lens_profiles
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect();
+        assert_eq!(names, ["Helios", "Zeiss"]);
+        assert!(path.exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_load_or_quarantine_keeps_broken_config() {
+        let dir = crate::test_util::temp_dir("config_broken");
+        let path = dir.join("config.json");
+        fs::write(&path, "{ this is not json").unwrap();
+
+        let (loaded, error) = Config::load_or_quarantine(&path);
+
+        // Empty config, so the user can continue, and the broken file is not lost
+        assert!(loaded.lens_profiles.is_empty());
+        assert!(loaded.exiftool_path.is_none());
+        let error = error.expect("the problem must be reported");
+        assert!(error.contains("config.json.broken"));
+        assert!(!path.exists());
+        assert_eq!(
+            fs::read_to_string(dir.join("config.json.broken")).unwrap(),
+            "{ this is not json"
+        );
+        let _ = fs::remove_dir_all(dir);
     }
 }

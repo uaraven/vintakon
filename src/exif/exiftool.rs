@@ -313,4 +313,228 @@ mod exiftool_test {
         std::fs::remove_dir(&dir).unwrap();
         assert!(result.unwrap().is_empty());
     }
+
+    // ---- entry parsing ----
+
+    use super::{ExifInfo, apply_profile, read_files};
+    use crate::exif::info::ExifChanges;
+    use crate::model::lens_profile::LensProfile;
+    use crate::test_util::{TEST_JPG, copy_test_jpg, temp_dir};
+    use chrono::{DateTime, Utc};
+    use serde_json::json;
+
+    fn parse(entry: serde_json::Value) -> Option<ExifInfo> {
+        parse_exif_entry(&entry)
+    }
+
+    #[test]
+    fn entry_without_source_file_is_ignored() {
+        assert!(parse(json!({"Make": "SONY"})).is_none());
+    }
+
+    #[test]
+    fn modification_date_is_converted_to_utc() {
+        let info = parse(json!({
+            "SourceFile": "a.jpg",
+            "FileModifyDate": "2026:10:29 21:33:18+02:00"
+        }))
+        .unwrap();
+        assert_eq!(info.mod_time.to_rfc3339(), "2026-10-29T19:33:18+00:00");
+    }
+
+    #[test]
+    fn malformed_modification_date_falls_back_to_the_file_system() {
+        let info = parse(json!({"SourceFile": TEST_JPG, "FileModifyDate": "yesterday"})).unwrap();
+        let modified = std::fs::metadata(TEST_JPG).unwrap().modified().unwrap();
+        assert_eq!(info.mod_time, DateTime::<Utc>::from(modified));
+    }
+
+    #[test]
+    fn entry_without_date_for_a_missing_file_is_ignored() {
+        assert!(parse(json!({"SourceFile": "test-data/img/no-such-file.jpg"})).is_none());
+    }
+
+    #[test]
+    fn missing_tags_are_none() {
+        let info = parse(json!({"SourceFile": TEST_JPG})).unwrap();
+        assert!(info.make.is_none() && info.lens_info.is_none() && info.preview_image.is_none());
+    }
+
+    #[test]
+    fn preview_is_decoded_from_base64_with_or_without_prefix() {
+        let with_prefix = parse(json!({"SourceFile": TEST_JPG, "PreviewImage": "base64:YWJj"}));
+        assert_eq!(with_prefix.unwrap().preview_image.unwrap(), b"abc");
+        let without_prefix = parse(json!({"SourceFile": TEST_JPG, "PreviewImage": "YWJj"}));
+        assert_eq!(without_prefix.unwrap().preview_image.unwrap(), b"abc");
+    }
+
+    #[test]
+    fn preview_tags_are_used_in_order_of_priority() {
+        let all = parse(json!({
+            "SourceFile": TEST_JPG,
+            "ThumbnailImage": "base64:dGh1bWI=",
+            "JpgFromRaw": "base64:cmF3",
+            "PreviewImage": "base64:cHJldmlldw=="
+        }));
+        assert_eq!(all.unwrap().preview_image.unwrap(), b"preview");
+
+        let no_preview = parse(json!({
+            "SourceFile": TEST_JPG,
+            "ThumbnailImage": "base64:dGh1bWI=",
+            "JpgFromRaw": "base64:cmF3"
+        }));
+        assert_eq!(no_preview.unwrap().preview_image.unwrap(), b"raw");
+    }
+
+    #[test]
+    fn invalid_base64_preview_is_ignored() {
+        let info = parse(json!({"SourceFile": TEST_JPG, "PreviewImage": "base64:!!!"})).unwrap();
+        assert!(info.preview_image.is_none());
+    }
+
+    // ---- preview decoding ----
+
+    #[test]
+    fn preview_without_embedded_image_is_decoded_from_the_jpeg_and_downscaled() {
+        let info = parse(json!({"SourceFile": TEST_JPG})).unwrap();
+        let image = decode_preview(&info).expect("a plain JPEG can be used as a preview");
+        assert!(image.width() <= 1600 && image.height() <= 1600);
+        assert!(image.width() == 1600 || image.height() == 1600);
+    }
+
+    #[test]
+    fn undecodable_embedded_preview_falls_back_to_the_jpeg() {
+        let info = parse(json!({"SourceFile": TEST_JPG, "PreviewImage": "base64:YWJj"})).unwrap();
+        assert!(decode_preview(&info).is_some());
+    }
+
+    #[test]
+    fn small_embedded_preview_is_not_resized() {
+        // Valid 2x1 PNG (red and blue pixels)
+        let png = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAADUlEQVR4nGP4zwAE/wEHAAH/4iOeWQAAAABJRU5ErkJggg==";
+        let info = parse(json!({
+            "SourceFile": "a.arw",
+            "FileModifyDate": "2026:10:29 21:33:18+00:00",
+            "PreviewImage": format!("base64:{png}")
+        }));
+        let image = decode_preview(&info.unwrap()).expect("embedded PNG must be decoded");
+        assert_eq!((image.width(), image.height()), (2, 1));
+    }
+
+    #[test]
+    fn raw_file_without_a_preview_has_none() {
+        let info = parse(json!({"SourceFile": "test-data/img/_DSC3006.ARW"})).unwrap();
+        assert!(decode_preview(&info).is_none());
+    }
+
+    // ---- writing ----
+
+    fn profile() -> LensProfile {
+        LensProfile {
+            name: "Helios".to_string(),
+            lens_make: "Helios".to_string(),
+            lens_model: "44-2 58mm f/2".to_string(),
+            min_focal_length: 58.0,
+            max_focal_length: 58.0,
+            min_aperture: "2".to_string(),
+            max_aperture: "16".to_string(),
+            crop_factor: 1.5,
+        }
+    }
+
+    #[test]
+    fn applied_profile_can_be_read_back() {
+        let dir = temp_dir("apply_profile");
+        let file = copy_test_jpg(&dir, "photo.jpg");
+        let dir_name = dir.to_str().unwrap();
+
+        let changes = ExifChanges::new(&profile(), None, Some("2.8".to_string()));
+        apply_profile(
+            None,
+            dir_name,
+            vec![file.to_str().unwrap().to_string()],
+            changes,
+        )
+        .expect("exiftool must write the tags");
+
+        let infos = read_files(dir_name, None).unwrap();
+        // exiftool keeps `photo.jpg_original` next to the file, it must not be listed
+        assert_eq!(infos.len(), 1);
+        let info = &infos[0];
+        assert_eq!(info.lens_make.as_deref(), Some("Helios"));
+        assert_eq!(info.lens_model.as_deref(), Some("44-2 58mm f/2"));
+        assert_eq!(info.aperture.as_deref(), Some("2.8"));
+        assert!(info.focal_length.as_deref().unwrap().starts_with("58"));
+        assert!(info.focal_length_35mm.as_deref().unwrap().starts_with("87"));
+        assert!(info.lens_info.is_some());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn applying_a_profile_twice_overwrites_the_values() {
+        let dir = temp_dir("apply_profile_twice");
+        let file = copy_test_jpg(&dir, "photo.jpg");
+        let dir_name = dir.to_str().unwrap();
+        let files = vec![file.to_str().unwrap().to_string()];
+
+        let first = ExifChanges::new(&profile(), None, None);
+        apply_profile(None, dir_name, files.clone(), first).unwrap();
+        let mut other = profile();
+        other.lens_model = "Jupiter-9".to_string();
+        apply_profile(None, dir_name, files, ExifChanges::new(&other, None, None)).unwrap();
+
+        let infos = read_files(dir_name, None).unwrap();
+        assert_eq!(infos[0].lens_model.as_deref(), Some("Jupiter-9"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn applying_a_profile_to_a_broken_file_reports_the_error() {
+        let dir = temp_dir("apply_profile_broken");
+        std::fs::write(dir.join("bad.jpg"), "not a jpeg").unwrap();
+
+        let changes = ExifChanges::new(&profile(), None, None);
+        let error = apply_profile(
+            None,
+            dir.to_str().unwrap(),
+            vec![dir.join("bad.jpg").to_str().unwrap().to_string()],
+            changes,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("bad.jpg"), "{error}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn applying_a_profile_reports_missing_exiftool() {
+        let dir = temp_dir("apply_profile_no_exiftool");
+        let changes = ExifChanges::new(&profile(), None, None);
+        let error = apply_profile(
+            Some("/nonexistent/exiftool".to_string()),
+            dir.to_str().unwrap(),
+            vec!["a.jpg".to_string()],
+            changes,
+        )
+        .unwrap_err();
+        assert!(error.contains("Failed to run exiftool"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn files_are_listed_in_path_order_and_other_extensions_are_skipped() {
+        let dir = temp_dir("read_files_order");
+        copy_test_jpg(&dir, "b.jpg");
+        copy_test_jpg(&dir, "a.JPG");
+        std::fs::write(dir.join("notes.txt"), "hello").unwrap();
+
+        let infos = read_files(dir.to_str().unwrap(), None).unwrap();
+
+        let names: Vec<&str> = infos
+            .iter()
+            .map(|info| info.file_path.rsplit('/').next().unwrap())
+            .collect();
+        assert_eq!(names, ["a.JPG", "b.jpg"]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

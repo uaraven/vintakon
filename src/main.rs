@@ -8,6 +8,8 @@ mod model;
 mod resources;
 mod settings_state;
 mod state;
+#[cfg(test)]
+mod test_util;
 mod ui;
 
 fn main() {
