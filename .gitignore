@@ -48,3 +48,6 @@ app.*.map.json
 # Added by cargo
 
 /target
+
+# Machine-specific Claude Code settings
+.claude/settings.local.json
