@@ -125,9 +125,9 @@ pub fn button(enabled: bool) -> Button {
     )
 }
 
-/// A rounded panel with a title and a content area. To make the content scroll or stretch,
-/// give it a flexible height (`Size::flex`) and the card a fixed one
-pub fn card(title: String, content: impl IntoElement) -> Rect {
+/// A rounded panel for the content. To make the content scroll or stretch,
+/// give it a flexible height (`Size::flex`) and the panel a fixed one
+pub fn panel() -> Rect {
     rect()
         .width(Size::fill())
         .vertical()
@@ -137,6 +137,11 @@ pub fn card(title: String, content: impl IntoElement) -> Rect {
         .background(colors().surface_secondary)
         .corner_radius(8.)
         .border(Border::new().fill(colors().border).width(1.))
+}
+
+/// A panel with a title and a content area
+pub fn card(title: String, content: impl IntoElement) -> Rect {
+    panel()
         .child(text(title, 16.))
         .child(divider(1.))
         .child(content)

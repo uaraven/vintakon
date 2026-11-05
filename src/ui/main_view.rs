@@ -3,7 +3,7 @@
 use freya::{elements::image::ImageHandle, engine::prelude::AlphaType, prelude::*};
 
 use super::widgets::{
-    PRIMARY, button, card, centered, colors, divider, icon, icon_button, menu_label, text,
+    PRIMARY, button, card, centered, colors, divider, icon, icon_button, menu_label, panel, text,
 };
 use crate::{
     exif::{exiftool::decode_preview, info::ExifInfo},
@@ -275,7 +275,8 @@ impl Component for ContentPane {
                     rect()
                         .width(Size::flex(1.))
                         .height(Size::fill())
-                        .child(FileList),
+                        .padding(10.)
+                        .child(panel().height(Size::fill()).child(FileList)),
                 )
                 .child(
                     rect()
@@ -302,7 +303,6 @@ impl Component for FileList {
             .child(
                 rect()
                     .width(Size::fill())
-                    .padding(10.)
                     .spacing(5.)
                     .children((0..count).map(|index| FileRow::new(index).into())),
             )
